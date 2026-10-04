@@ -177,12 +177,9 @@ func (d *Driver) Stream(ctx context.Context, req driver.RunRequest) (<-chan driv
 	if runID == "" {
 		runID = uuid.NewString()
 	}
-	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	// Keep the request context's cancellation (client disconnect) but make
-	// the run context independent of ctx values.
-	cancelOwned := cancel
+	runCtx, cancel := context.WithCancel(ctx)
 	st.runID = runID
-	st.cancelFn = cancelOwned
+	st.cancelFn = cancel
 	st.done = make(chan struct{})
 	done := st.done
 	st.runMu.Unlock()
