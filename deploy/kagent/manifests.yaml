@@ -1,4 +1,5 @@
-# agent-host-ag-ui + kagent (byo Harness) manifests.
+# agent-host-ag-ui + kagent (byo Harness) manifests — api.kagent.dev/v1alpha3.
+# Shapes verified from kagent.dev 1.x docs (agent-harness + api-ref).
 # Day-one: applied with kubectl on the k3d testbed; GitOps-able later.
 apiVersion: api.kagent.dev/v1alpha3
 kind: ModelConfig
@@ -7,17 +8,16 @@ metadata:
   namespace: kagent
 spec:
   provider: OpenAI
+  model: deepseek/deepseek-chat-v3.1
+  # NOTE: plan locked opencode-zen (`https://opencode.ai/zen/v1`,
+  # mimo-v2.6-flash); no opencode-zen credential exists on the devbox, so
+  # day-one proof uses OpenRouter (OpenAI-compatible, key already present).
+  # Swap baseUrl+model+secret when the zen key is available — the adapter
+  # does not care; the omp child owns the model call in all cases.
   openAI:
-    # NOTE: plan locked opencode-zen (`https://opencode.ai/zen/v1`,
-    # mimo-v2.6-flash); no opencode-zen credential exists on the devbox, so
-    # day-one proof uses OpenRouter (OpenAI-compatible, key already present).
-    # Swap baseUrl+model+secret when the zen key is available — the adapter
-    # does not care; omp child owns the model call in all cases.
     baseUrl: https://openrouter.ai/api/v1
-    model: deepseek/deepseek-chat-v3.1
-    apiKeySecret:
-      name: kagent-openai
-      key: apiKey
+  apiKeySecret: kagent-openai
+  apiKeySecretKey: apiKey
 ---
 apiVersion: api.kagent.dev/v1alpha3
 kind: AgentTemplate
@@ -25,22 +25,58 @@ metadata:
   name: agent-host-dot
   namespace: kagent
 spec:
-  systemMessage: |
+  description: omp coding-agent dot hosted by agent-host-ag-ui
+  systemPrompt: |
     You are the dots persona assistant hosted by agent-host-ag-ui.
     Execute user prompts with an omp coding-agent child. Keep replies direct.
     A browser tool (browser_open/browser_snapshot/browser_click/browser_fill/
     browser_screenshot) is available as host tools.
-  tools: []
 ---
 apiVersion: api.kagent.dev/v1alpha3
 kind: Harness
 metadata:
   name: agent-host-ag-ui
   namespace: kagent
-  labels:
-    kagent.dev/worker-pool: kagent-default
 spec:
-  # byo contract: container serves gRPC on :80 and /readyz on :8081.
-  byo:
-    image: ghcr.io/brendanjerwin/agent-host-ag-ui:PLACEHOLDER_SHA
-    env: []
+  # byo contract: container serves the A2A gRPC service on :80 and /readyz
+  # on :8081. Image MUST be digest-pinned (tags rejected).
+  byo: {}
+  workload:
+    image: ghcr.io/brendanjerwin/agent-host-ag-ui@sha256:f406f05619a2a86d23779c28b066f693eff2307a7eeb53b6274bd4e30aabbe95
+    command: ["/usr/local/bin/agent-host-ag-ui"]
+  env:
+    - name: AGENT_HOST_AG_UI_ADDR
+      value: ":8090"
+    - name: AGENT_HOST_AG_UI_A2A_ADDR
+      # Substrate actors run non-root; gVisor drops file capabilities, so
+      # the privileged :80 bind fails. :8080 is the in-actor A2A gRPC port;
+      # the atenet router resolves it. Local/direct runs stay on :80.
+      value: ":8080"
+    - name: AGENT_HOST_AG_UI_A2A_HTTP_ADDR
+      value: ":8091"
+    # Controller dials the port named by KAGENT_PORT (default 80). Without
+    # it, a non-80 listener shows READY but every invoke dial fails.
+    - name: KAGENT_PORT
+      value: "8080"
+    - name: AGENT_HOST_AG_UI_READYZ_ADDR
+      value: ":8081"
+    - name: AGENT_HOST_AG_UI_SESSION_ROOT
+      value: /data/sessions
+    - name: AGENT_HOST_AG_UI_CWD
+      value: /workspace
+  substrate:
+    workerPoolRef:
+      name: kagent-default
+    snapshotPolicy:
+      location: s3://ate-snapshots/kagent/
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: agent-host-dot
+  namespace: kagent
+spec:
+  templateRef:
+    name: agent-host-dot
+  harnessRef:
+    name: agent-host-ag-ui

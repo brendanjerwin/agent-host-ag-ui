@@ -1,0 +1,82 @@
+# Rung-3 fallback (contract-first): our own pod manifests + host service.
+# Plain Deployment on the k3d testbed; no Agent Substrate actor path (blocked:
+# see TECH_DEBT.md #1). The contract itself — AG-UI :8090, A2A gRPC :80,
+# /readyz :8081 — is identical to the byo Harness contract, so promotion back
+# to the substrate/lagent path is a manifest swap only.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-host-ag-ui
+  namespace: kagent
+  labels:
+    app: agent-host-ag-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-host-ag-ui
+  template:
+    metadata:
+      labels:
+        app: agent-host-ag-ui
+    spec:
+      containers:
+        - name: host
+          image: ghcr.io/brendanjerwin/agent-host-ag-ui:dev2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: AGENT_HOST_AG_UI_ADDR
+              value: ":8090"
+            - name: AGENT_HOST_AG_UI_A2A_ADDR
+              value: ":80"
+            - name: AGENT_HOST_AG_UI_A2A_HTTP_ADDR
+              value: ":8091"
+            - name: AGENT_HOST_AG_UI_READYZ_ADDR
+              value: ":8081"
+            - name: AGENT_HOST_AG_UI_SESSION_ROOT
+              value: /data/sessions
+            - name: AGENT_HOST_AG_UI_CWD
+              value: /workspace
+          ports:
+            - containerPort: 80
+              name: a2a
+            - containerPort: 8090
+              name: ag-ui
+            - containerPort: 8091
+              name: a2a-http
+            - containerPort: 8081
+              name: readyz
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: readyz
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8090
+            initialDelaySeconds: 15
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-host-ag-ui
+  namespace: kagent
+spec:
+  selector:
+    app: agent-host-ag-ui
+  ports:
+    - name: a2a
+      port: 80
+      targetPort: a2a
+    - name: ag-ui
+      port: 8090
+      targetPort: ag-ui
+    - name: a2a-http
+      port: 8091
+      targetPort: a2a-http
+    - name: readyz
+      port: 8081
+      targetPort: readyz
