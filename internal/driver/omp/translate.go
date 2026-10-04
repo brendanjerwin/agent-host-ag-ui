@@ -118,6 +118,21 @@ func (t *translator) translate(ctx context.Context, frame omprpc.RpcServerFrame,
 		yielded := v.Yielded == nil || *v.Yielded
 		if terminal && yielded {
 			t.closeOpenBlocks(ctx, out)
+			if t.lastAssistantStopReason == "error" && !t.finished && !t.errored {
+				// docs/rpc.md: a failed provider turn ends a normal terminal
+				// agent_end whose last assistant message has
+				// stopReason: "error" — use prompt_result status rather
+				// than parsing that message, but when no prompt_result
+				// follows the agent_end (e.g. background jobs settled
+				// first), the error tail must surface as RUN_ERROR.
+				emit(ctx, out, driver.RunError{
+					ThreadID: t.threadID,
+					RunID:    t.runID,
+					Message:  "assistant ended with stopReason error",
+				})
+				t.errored = true
+				return translatorContinue, ""
+			}
 			if !t.finished && !t.errored {
 				emit(ctx, out, driver.RunFinished{ThreadID: t.threadID, RunID: t.runID})
 				t.finished = true
@@ -134,8 +149,12 @@ func (t *translator) translate(ctx context.Context, frame omprpc.RpcServerFrame,
 			}
 			return translatorDone, "completed"
 		case omprpc.PromptStatusError:
-			if !t.finished && !t.errored {
-				t.closeOpenBlocks(ctx, out)
+			// prompt_result status is authoritative: override an agent_end
+			// RUN_FINISHED that came from the error-tail rule.
+			if !t.errored {
+				if !t.finished {
+					t.closeOpenBlocks(ctx, out)
+				}
 				msg := "omp run failed"
 				if v.Error != nil {
 					msg = v.Error.Message

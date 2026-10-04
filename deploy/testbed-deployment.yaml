@@ -22,9 +22,11 @@ spec:
     spec:
       containers:
         - name: host
-          image: ghcr.io/brendanjerwin/agent-host-ag-ui:dev2
+          image: ghcr.io/brendanjerwin/agent-host-ag-ui:dev3
           imagePullPolicy: IfNotPresent
           env:
+            - name: HOME
+              value: /root
             - name: AGENT_HOST_AG_UI_ADDR
               value: ":8090"
             - name: AGENT_HOST_AG_UI_A2A_ADDR
@@ -37,6 +39,22 @@ spec:
               value: /data/sessions
             - name: AGENT_HOST_AG_UI_CWD
               value: /workspace
+            - name: OLLAMA_CLOUD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: omp-key
+                  key: OLLAMA_CLOUD_API_KEY
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: omp-key
+                  key: OPENROUTER_API_KEY
+          volumeMounts:
+            - name: omp-config
+              mountPath: /root/.omp-source
+              readOnly: true
+            - name: omp-home
+              mountPath: /root/.omp/agent
           ports:
             - containerPort: 80
               name: a2a
@@ -58,6 +76,27 @@ spec:
               port: 8090
             initialDelaySeconds: 15
             periodSeconds: 30
+      initContainers:
+        - name: omp-home-init
+          image: busybox:1.36
+          command:
+            [
+              "sh",
+              "-c",
+              "mkdir -p /omp-home && cp /root/.omp-source/config.yml /omp-home/ && cp /root/.omp-source/agent.db /omp-home/",
+            ]
+          volumeMounts:
+            - name: omp-config
+              mountPath: /root/.omp-source
+              readOnly: true
+            - name: omp-home
+              mountPath: /omp-home
+      volumes:
+        - name: omp-config
+          secret:
+            secretName: omp-auth
+        - name: omp-home
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
