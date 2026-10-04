@@ -1,0 +1,21 @@
+providers:
+  default: openAI
+  openAI:
+    # OpenRouter is OpenAI-compatible (not the plan's opencode-zen endpoint;
+    # per-model config lives in ModelConfig CRs).
+    baseUrl: https://openrouter.ai/api/v1
+controller:
+  grpc:
+    reflection: true
+  substrate:
+    enabled: true
+    ateApiEndpoint: dns:///api.ate-system.svc:443
+    atenetRouterURL: http://atenet-router.ate-system.svc:80
+substrateWorkerPool:
+  create: true
+  replicas: 1
+  workerImage: "ghcr.io/kagent-dev/substrate/ateom-gvisor:v0.3.0-alpha3"
+grafana-mcp:
+  enabled: false
+observability-agent:
+  enabled: false

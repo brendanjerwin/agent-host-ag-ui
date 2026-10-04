@@ -1,0 +1,46 @@
+# agent-host-ag-ui + kagent (byo Harness) manifests.
+# Day-one: applied with kubectl on the k3d testbed; GitOps-able later.
+apiVersion: api.kagent.dev/v1alpha3
+kind: ModelConfig
+metadata:
+  name: agent-host-model
+  namespace: kagent
+spec:
+  provider: OpenAI
+  openAI:
+    # NOTE: plan locked opencode-zen (`https://opencode.ai/zen/v1`,
+    # mimo-v2.6-flash); no opencode-zen credential exists on the devbox, so
+    # day-one proof uses OpenRouter (OpenAI-compatible, key already present).
+    # Swap baseUrl+model+secret when the zen key is available — the adapter
+    # does not care; omp child owns the model call in all cases.
+    baseUrl: https://openrouter.ai/api/v1
+    model: deepseek/deepseek-chat-v3.1
+    apiKeySecret:
+      name: kagent-openai
+      key: apiKey
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: AgentTemplate
+metadata:
+  name: agent-host-dot
+  namespace: kagent
+spec:
+  systemMessage: |
+    You are the dots persona assistant hosted by agent-host-ag-ui.
+    Execute user prompts with an omp coding-agent child. Keep replies direct.
+    A browser tool (browser_open/browser_snapshot/browser_click/browser_fill/
+    browser_screenshot) is available as host tools.
+  tools: []
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: agent-host-ag-ui
+  namespace: kagent
+  labels:
+    kagent.dev/worker-pool: kagent-default
+spec:
+  # byo contract: container serves gRPC on :80 and /readyz on :8081.
+  byo:
+    image: ghcr.io/brendanjerwin/agent-host-ag-ui:PLACEHOLDER_SHA
+    env: []

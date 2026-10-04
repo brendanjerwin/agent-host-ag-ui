@@ -15,7 +15,7 @@ FROM node:22-bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
         chromium ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
-RUN npm install -g agent-browser && agent-browser install || true
+RUN npm install -g agent-browser@0.38.2 && agent-browser install || true
 
 # omp coding agent (npm package)
 RUN npm install -g @oh-my-pi/pi-coding-agent@18.6.0
