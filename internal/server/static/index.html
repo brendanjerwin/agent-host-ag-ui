@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>agent-host-ag-ui test GUI</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      display: flex;
+      height: 100vh;
+      background: #111;
+      color: #eee;
+    }
+
+    #left {
+      width: 60%;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #333;
+    }
+
+    #right {
+      width: 40%;
+      padding: 1rem;
+      overflow-y: auto;
+    }
+
+    #log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+
+    .msg {
+      margin: 0.5rem 0;
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      max-width: 85%;
+    }
+
+    .user {
+      background: #1e3a5f;
+      margin-left: auto;
+    }
+
+    .assistant {
+      background: #233;
+    }
+
+    .thinking {
+      color: #999;
+      font-style: italic;
+    }
+
+    .tool {
+      background: #2a2;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+      font-family: monospace;
+      font-size: 0.85rem;
+    }
+
+    .toolresult {
+      background: #252;
+      padding: 0.4rem;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+    }
+
+    .error {
+      background: #611;
+      padding: 0.5rem;
+      border-radius: 6px;
+      margin: 0.5rem 0;
+    }
+
+    #inputrow {
+      display: flex;
+      gap: 0.5rem;
+      padding: 1rem;
+      border-top: 1px solid #333;
+    }
+
+    #input {
+      flex: 1;
+      background: #222;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 0.6rem;
+    }
+
+    button {
+      background: #345;
+      color: #eee;
+      border: none;
+      border-radius: 6px;
+      padding: 0.6rem 1rem;
+      cursor: pointer;
+    }
+
+    #eventlog {
+      font-family: monospace;
+      font-size: 0.75rem;
+      white-space: pre-wrap;
+      color: #888;
+      max-height: 30vh;
+      overflow-y: auto;
+    }
+
+    #browserpanel img {
+      max-width: 100%;
+      border: 1px solid #444;
+    }
+
+    h3 {
+      margin-top: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="left">
+    <div id="log"></div>
+    <div id="inputrow">
+      <input id="input" placeholder="Type a message…">
+      <button id="send">Send</button>
+      <button id="reset" title="New thread">Reset</button>
+    </div>
+  </div>
+  <div id="right">
+    <h3>Thread</h3>
+    <div id="threadid"></div>
+    <h3>Raw events (last 100)</h3>
+    <div id="eventlog"></div>
+    <h3>Browser panel</h3>
+    <div id="browserpanel"></div>
+  </div>
+  <script type="module">
+    import {HttpAgent} from "https://esm.sh/@ag-ui/client";
+    const KEY = "agent-host-ag-ui-thread";
+    let threadId = localStorage.getItem(KEY);
+    if (!threadId) {
+      threadId = "t-" + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem(KEY, threadId);
+    }
+    document.getElementById("threadid").textContent = threadId;
+
+    const logEl = document.getElementById("log");
+    const eventLog = document.getElementById("eventlog");
+    const events = [];
+    function addEvent(ev) {
+      events.push(JSON.stringify(ev));
+      if (events.length > 100) events.shift();
+      eventLog.textContent = events.join("\n");
+    }
+
+    let currentAssistant = null;
+    function append(role, text, cls) {
+      const d = document.createElement("div");
+      d.className = "msg " + cls;
+      d.textContent = text;
+      logEl.appendChild(d);
+      return d;
+    }
+
+    const agent = new HttpAgent({url: "/ag-ui", threadId});
+
+    agent.subscribeEvent?.((ev) => addEvent(ev));
+
+    agent.on("text_message_start", (ev) => {
+      currentAssistant = append("assistant", "", "assistant");
+    });
+    agent.on("text_message_content", (ev) => {
+      if (currentAssistant) currentAssistant.textContent += ev.delta;
+    });
+    agent.on("text_message_end", () => {currentAssistant = null;});
+    agent.on("tool_call_start", (ev) => {
+      const d = document.createElement("div");
+      d.className = "tool";
+      d.id = "tool-" + ev.toolCallId;
+      d.textContent = "🔧 " + ev.toolCallName;
+      logEl.appendChild(d);
+    });
+    agent.on("tool_call_args", (ev) => {
+      const d = document.getElementById("tool-" + ev.toolCallId);
+      if (d) d.textContent += ev.delta;
+    });
+    agent.on("tool_call_result", (ev) => {
+      const d = document.createElement("div");
+      d.className = "toolresult";
+      d.textContent = ev.content;
+      logEl.appendChild(d);
+    });
+    agent.on("run_error", (ev) => {
+      append("", "⚠️ " + (ev.message || "run error"), "error");
+    });
+    agent.on("activity_snapshot", (ev) => {
+      const panel = document.getElementById("browserpanel");
+      const img = document.createElement("img");
+      img.src = ev.snapshot?.screenshot || ev.content;
+      panel.replaceChildren(img);
+    });
+
+    document.getElementById("send").onclick = async () => {
+      const input = document.getElementById("input");
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      append("user", text, "user");
+      agent.messages.push({id: "m" + Date.now(), role: "user", content: text});
+      try {await agent.runAgent();} catch (e) {append("", "⚠️ " + e, "error");}
+    };
+    document.getElementById("input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") document.getElementById("send").click();
+    });
+    document.getElementById("reset").onclick = () => {
+      localStorage.removeItem(KEY);
+      location.reload();
+    };
+  </script>
+</body>
+
+</html>
