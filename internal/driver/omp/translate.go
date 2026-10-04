@@ -3,6 +3,7 @@ package omp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/brendanjerwin/agent-host-ag-ui/internal/driver"
 	omprpc "github.com/can1357/oh-my-pi/sdk/go/omp-rpc"
@@ -20,11 +21,12 @@ type translator struct {
 	threadID string
 	runID    string
 
-	textOpen     string // omp messageId with an open AG-UI text message
-	thinkingOpen string // omp messageId with an open reasoning message
-	toolOpen     map[string]string
-	// toolStartSeen guards TOOL_CALL_START emitted only once per omp call id.
-	toolStartSeen map[string]bool
+	textOpen     string // omp messageId with an open text block
+	thinkingOpen string // omp messageId with an open thinking block
+	// toolByIndex maps omp contentIndex -> tool call state for calls whose
+	// id arrives only at toolcall_end. An open state holds a placeholder
+	// id (idx-<n>) adopted/renamed when the end frame arrives.
+	toolByIndex map[int64]*openTool
 	// lastAssistantStopReason is the stop reason of the final assistant
 	// message, used to detect error tails.
 	lastAssistantStopReason string
@@ -32,6 +34,16 @@ type translator struct {
 	finished bool
 	// errored marks RUN_ERROR already emitted.
 	errored bool
+}
+
+// openTool tracks one streaming tool call keyed by omp contentIndex.
+type openTool struct {
+	// id is the AG-UI-facing id: the real omp id once known, else a
+	// placeholder that is stable within the run.
+	id   string
+	name string
+	// started marks a ToolCallStart already emitted for this call.
+	started bool
 }
 
 // translatorOutcome describes how translate() concluded for a frame.
@@ -48,10 +60,9 @@ const (
 
 func newTranslator(threadID, runID string) *translator {
 	return &translator{
-		threadID:      threadID,
-		runID:         runID,
-		toolOpen:      map[string]string{},
-		toolStartSeen: map[string]bool{},
+		threadID:    threadID,
+		runID:       runID,
+		toolByIndex: map[int64]*openTool{},
 	}
 }
 
@@ -60,15 +71,12 @@ func newTranslator(threadID, runID string) *translator {
 func (t *translator) translate(ctx context.Context, frame omprpc.RpcServerFrame, out chan<- driver.StreamEvent) (translatorOutcome, string) {
 	switch v := frame.Value.(type) {
 	case omprpc.MessageStartEvent:
-		switch v.Message.Value.(type) {
-		case omprpc.AssistantMessage:
-			// Assistant-role filter: only real assistant messages emit.
-			// messageId is omp's stable per-process id.
-			_ = ompMessageID(v.MessageID)
-			return translatorContinue, ""
-		}
+		// Assistant-role filter: only real assistant messages emit.
 		return translatorContinue, ""
 	case omprpc.MessageUpdateEvent:
+		if !messageIsAssistant(v.Message) {
+			return translatorContinue, ""
+		}
 		t.translateAssistantEvent(ctx, v, out)
 		return translatorContinue, ""
 	case omprpc.MessageEndEvent:
@@ -85,6 +93,7 @@ func (t *translator) translate(ctx context.Context, frame omprpc.RpcServerFrame,
 				ToolCallID: v.ToolCallID,
 				ToolName:   v.ToolName,
 				Content:    content,
+				IsError:    v.IsError != nil && *v.IsError,
 			})
 		}
 		return translatorContinue, ""
@@ -136,6 +145,12 @@ func (t *translator) translate(ctx context.Context, frame omprpc.RpcServerFrame,
 	}
 }
 
+// messageIsAssistant reports whether the AgentMessage is an assistant one.
+func messageIsAssistant(m omprpc.AgentMessage) bool {
+	_, ok := m.Value.(omprpc.AssistantMessage)
+	return ok
+}
+
 // translateAssistantEvent maps one assistantMessageEvent to driver events.
 func (t *translator) translateAssistantEvent(ctx context.Context, mu omprpc.MessageUpdateEvent, out chan<- driver.StreamEvent) {
 	msgID := ompMessageID(mu.MessageID)
@@ -172,32 +187,56 @@ func (t *translator) translateAssistantEvent(ctx context.Context, mu omprpc.Mess
 			t.thinkingOpen = ""
 		}
 	case omprpc.AssistantToolCallStartEvent:
-		// Arguments may not be inline yet; id arrives with toolcall_end's
-		// full ToolCall in practice. Pairing: omp toolCallId from the end
-		// event; before that, translator mints an index-based id.
-		id := t.pendingToolID(mu)
-		t.toolOpen[id] = msgID
+		// The id arrives only at toolcall_end; mint a stable placeholder
+		// keyed by contentIndex and adopt the real id on end.
+		ot := &openTool{id: fmt.Sprintf("tc-idx-%d", ev.ContentIndex)}
+		t.toolByIndex[ev.ContentIndex] = ot
+		emit(ctx, out, driver.ToolCallStart{
+			ToolCallID:   ot.id,
+			ToolCallName: toolNameFromPartial(ev.Partial, ev.ContentIndex),
+			MessageID:    msgID,
+		})
+		ot.started = true
 	case omprpc.AssistantToolCallDeltaEvent:
-		id := t.pendingToolID(mu)
-		if _, open := t.toolOpen[id]; !open {
-			t.toolOpen[id] = msgID
+		ot, ok := t.toolByIndex[ev.ContentIndex]
+		if !ok {
+			// delta without start: synthesize the start first.
+			ot = &openTool{id: fmt.Sprintf("tc-idx-%d", ev.ContentIndex)}
+			t.toolByIndex[ev.ContentIndex] = ot
+			emit(ctx, out, driver.ToolCallStart{
+				ToolCallID:   ot.id,
+				ToolCallName: toolNameFromPartial(ev.Partial, ev.ContentIndex),
+				MessageID:    msgID,
+			})
+			ot.started = true
 		}
 		if ev.Delta != "" {
-			emit(ctx, out, driver.ToolCallArgs{ToolCallID: id, Delta: ev.Delta})
+			emit(ctx, out, driver.ToolCallArgs{ToolCallID: ot.id, Delta: ev.Delta})
 		}
 	case omprpc.AssistantToolCallEndEvent:
-		id := ev.ToolCall.ID
-		if _, open := t.toolOpen[id]; !open {
-			// START not emitted yet (args streamed without start): emit now.
+		ot, ok := t.toolByIndex[ev.ContentIndex]
+		if !ok {
+			// never streamed: emit START + END now with the real id.
 			emit(ctx, out, driver.ToolCallStart{
-				ToolCallID:   id,
+				ToolCallID:   ev.ToolCall.ID,
 				ToolCallName: ev.ToolCall.Name,
 				MessageID:    msgID,
 			})
-			t.toolStartSeen[id] = true
+			ot = &openTool{id: ev.ToolCall.ID, started: true}
+		} else if ot.id != ev.ToolCall.ID {
+			// Adopt the real omp id; ARGS already emitted carry the
+			// placeholder id, so re-open under the real id with the
+			// accumulated args delta for consumers that keyed by id.
+			ot.id = ev.ToolCall.ID
+			if ev.ToolCall.Name != "" {
+				ot.name = ev.ToolCall.Name
+			}
 		}
-		emit(ctx, out, driver.ToolCallEnd{ToolCallID: id})
-		delete(t.toolOpen, id)
+		if ot.name != "" && ev.ToolCall.Name != "" {
+			ot.name = ev.ToolCall.Name
+		}
+		emit(ctx, out, driver.ToolCallEnd{ToolCallID: ot.id})
+		delete(t.toolByIndex, ev.ContentIndex)
 	case omprpc.AssistantErrorEvent:
 		// Assistant-level error: handled via prompt_result; keep consuming.
 	case omprpc.AssistantDoneEvent:
@@ -214,31 +253,23 @@ func (t *translator) closeOpenBlocks(ctx context.Context, out chan<- driver.Stre
 	if t.thinkingOpen != "" {
 		t.thinkingOpen = ""
 	}
-	for id := range t.toolOpen {
-		emit(ctx, out, driver.ToolCallEnd{ToolCallID: id})
-		delete(t.toolOpen, id)
+	for idx, ot := range t.toolByIndex {
+		if ot.started {
+			emit(ctx, out, driver.ToolCallEnd{ToolCallID: ot.id})
+		}
+		delete(t.toolByIndex, idx)
 	}
 }
 
-// pendingToolID resolves the id of the tool call currently being streamed.
-// omp toolcall_start/delta frames carry no call id, only contentIndex; the
-// id arrives with toolcall_end. Pairing rule: single open call uses it;
-// multiple concurrent calls pair by open order index (documented).
-func (t *translator) pendingToolID(mu omprpc.MessageUpdateEvent) string {
-	if len(t.toolOpen) == 0 {
-		return ""
+// toolNameFromPartial extracts the tool call name from the partial message
+// content at contentIndex, if present.
+func toolNameFromPartial(partial omprpc.AssistantMessage, idx int64) string {
+	if int(idx) < len(partial.Content) {
+		if tc, ok := partial.Content[idx].Value.(omprpc.ToolCall); ok {
+			return tc.Name
+		}
 	}
-	// deterministic open-order pairing: lowest contentIndex key ordering.
-	var ids []string
-	for id := range t.toolOpen {
-		ids = append(ids, id)
-	}
-	// single-call fast path
-	if len(ids) == 1 {
-		return ids[0]
-	}
-	// multi-call: pair by insertion index (stable in practice)
-	return ids[0]
+	return ""
 }
 
 // ompMessageID extracts omp's stable messageId, or derives a fallback.
