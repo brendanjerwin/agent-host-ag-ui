@@ -88,7 +88,7 @@ func (e *executor) Execute(ctx context.Context, execCtx *a2asrv.ExecutorContext)
 			return
 		}
 		// Submitted task first (per template), then stream artifacts.
-		if !yield(a2a.NewSubmittedTask(execCtx, nil), nil) {
+		if !yield(a2a.NewSubmittedTask(execCtx, msg), nil) {
 			return
 		}
 		if !yield(a2a.NewStatusUpdateEvent(execCtx, a2a.TaskStateWorking, nil), nil) {
