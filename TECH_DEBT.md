@@ -54,6 +54,11 @@
    interface here is the seam.
 
 ## Resolved
+- **GUI never loaded (wire-only proof claimed as browser proof)** → loaded
+  `localhost:18090/` with agent-browser and drove a full turn: text streamed
+  into bubbles, tool blocks rendered, browser panel rendered the real 70KB
+  screenshot (`img.src` data URI), RUN_FINISHED reached. GUI is now
+  self-contained (fetch + manual SSE parse; no esm.sh CDN dependency).
 
 - **rpm omp wrapper bun missing in-pod** → Dockerfile switched to the
   prebuilt native omp binary (`omp.sh/install --binary`); verified
