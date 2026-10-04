@@ -57,6 +57,7 @@ func main() {
 	decoder := events.NewEventDecoder(nil)
 	sawStarted, sawFinished := false, false
 	var events_ []string
+	var collected []events.Event
 	buf := make([]byte, 0, 64*1024)
 	chunk := make([]byte, 64*1024)
 	for {
@@ -85,6 +86,7 @@ func main() {
 				os.Exit(1)
 			}
 			events_ = append(events_, evType)
+			collected = append(collected, ev)
 			switch e := ev.(type) {
 			case *events.RunStartedEvent:
 				sawStarted = true
@@ -113,7 +115,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "FAIL: no RUN_FINISHED")
 		os.Exit(1)
 	}
-	fmt.Printf("OK: %d events decoded cleanly: %s\n", len(events_), strings.Join(events_, " "))
+	// Sequence-level compliance via the SDK's validator.
+	if err := events.ValidateSequence(collected); err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL: sequence: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("OK: %d events decoded cleanly and ValidateSequence passed: %s\n", len(events_), strings.Join(events_, " "))
 }
 
 // indexByte finds the first occurrence of b in s.

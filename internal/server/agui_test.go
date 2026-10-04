@@ -78,8 +78,7 @@ func TestDecoderConformance(t *testing.T) {
 	}
 
 	decoder := events.NewEventDecoder(nil)
-	var sawStarted, sawFinished bool
-	var startedThreadID, finishedThreadID string
+	var decoded []events.Event
 	for i, data := range sseEvents {
 		// Every AG-UI event JSON carries "type"; extract it for the decoder.
 		var raw map[string]any
@@ -91,6 +90,18 @@ func TestDecoderConformance(t *testing.T) {
 		if err != nil {
 			t.Fatalf("event %d decode: %v (%s)", i, err, data)
 		}
+		decoded = append(decoded, dec)
+	}
+	// Formal sequence-level compliance: SDK's own validator.
+	if err := events.ValidateSequence(decoded); err != nil {
+		t.Fatalf("ValidateSequence: %v — sequence: %s", err, eventTypes(decoded))
+	}
+
+	var sawStarted, sawFinished bool
+	var sawTextStart, sawTextEnd bool
+	var startedThreadID, finishedThreadID string
+	var textStartID, textDeltaID string
+	for _, dec := range decoded {
 		switch e := dec.(type) {
 		case *events.RunStartedEvent:
 			sawStarted = true
@@ -98,6 +109,15 @@ func TestDecoderConformance(t *testing.T) {
 		case *events.RunFinishedEvent:
 			sawFinished = true
 			finishedThreadID = e.ThreadIDValue
+		case *events.TextMessageStartEvent:
+			sawTextStart = true
+			textStartID = e.MessageID
+		case *events.TextMessageContentEvent:
+			if textDeltaID == "" {
+				textDeltaID = e.MessageID
+			}
+		case *events.TextMessageEndEvent:
+			sawTextEnd = true
 		}
 	}
 	if !sawStarted {
@@ -109,6 +129,25 @@ func TestDecoderConformance(t *testing.T) {
 	if startedThreadID != "smoke-1" || finishedThreadID != "smoke-1" {
 		t.Errorf("thread ids: %q / %q", startedThreadID, finishedThreadID)
 	}
+	// MESSAGE lifecycle: bracketed START/END with a stable messageId.
+	if !sawTextStart || !sawTextEnd {
+		t.Errorf("text message lifecycle: start=%v end=%v (%s)", sawTextStart, sawTextEnd, eventTypes(decoded))
+	}
+	if textStartID == "" || textStartID != textDeltaID {
+		t.Errorf("text messageId not stable: start=%q delta=%q", textStartID, textDeltaID)
+	}
+}
+
+// eventTypes summarizes a decoded sequence for failure messages.
+func eventTypes(evs []events.Event) string {
+	var b strings.Builder
+	for i, ev := range evs {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(string(ev.Type()))
+	}
+	return b.String()
 }
 
 // TestInFlight409 locks the second-run conflict contract.

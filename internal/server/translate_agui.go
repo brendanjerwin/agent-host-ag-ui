@@ -31,58 +31,95 @@ func aguiEventType(ev driver.StreamEvent) agui.EventType {
 	}
 }
 
-// toAGUI converts a driver event to an AG-UI SDK event carrying
-// threadId/runId. The translator emits block lifecycle in order; visible
-// text messages open with TEXT_MESSAGE_START before CONTENT and close with
-// END (tracked here since the driver stream carries deltas only).
+// streamState tracks open message blocks for one SSE response and emits the
+// AG-UI message lifecycle (START before first delta of a message, END before
+// the message changes or the run ends). The omp driver stream reaches the
+// face as deltas only; the visible lifecycle lives here.
 type streamState struct {
 	threadID string
 	runID    string
-	// open message ids that need START before next CONTENT / END after.
-	textStarted map[string]bool
-	thinkOpen   map[string]bool
+
+	textOpen     string // messageId with an open TEXT_MESSAGE
+	thinkingOpen string // messageId with an open REASONING_MESSAGE
 }
 
 // NewStreamState tracks open message blocks for one SSE response.
 func NewStreamState(threadID, runID string) *streamState {
-	return &streamState{
-		threadID:    threadID,
-		runID:       runID,
-		textStarted: map[string]bool{},
-		thinkOpen:   map[string]bool{},
-	}
+	return &streamState{threadID: threadID, runID: runID}
 }
 
-// toAGUI maps one driver event (plus lifecycle state) to zero or one AG-UI
-// events. Message START/END are synthesized around the first/last deltas.
-func (st *streamState) toAGUI(ev driver.StreamEvent) agui.Event {
+// closeText closes the open text message, if any.
+func (st *streamState) closeText() []agui.Event {
+	if st.textOpen == "" {
+		return nil
+	}
+	ev := agui.NewTextMessageEndEvent(st.textOpen)
+	st.textOpen = ""
+	return []agui.Event{ev}
+}
+
+// closeThinking closes the open reasoning message, if any.
+func (st *streamState) closeThinking() []agui.Event {
+	if st.thinkingOpen == "" {
+		return nil
+	}
+	ev := agui.NewReasoningMessageEndEvent(st.thinkingOpen)
+	st.thinkingOpen = ""
+	return []agui.Event{ev}
+}
+
+// toAGUI maps one driver event to zero or more AG-UI events (message
+// START/END are synthesized around the first/last deltas of each message).
+func (st *streamState) toAGUI(ev driver.StreamEvent) []agui.Event {
 	switch v := ev.(type) {
 	case driver.RunStarted:
-		return agui.NewRunStartedEvent(st.threadID, st.runID)
+		return []agui.Event{agui.NewRunStartedEvent(st.threadID, st.runID)}
 	case driver.TextDelta:
-		if !st.textStarted[v.MessageID] {
-			st.textStarted[v.MessageID] = true
+		var out []agui.Event
+		if st.textOpen == "" {
+			// switch streams: close an open reasoning block first.
+			out = append(out, st.closeThinking()...)
+			out = append(out, agui.NewTextMessageStartEvent(v.MessageID, agui.WithRole("assistant")))
+			st.textOpen = v.MessageID
+		} else if st.textOpen != v.MessageID {
+			out = append(out, agui.NewTextMessageEndEvent(st.textOpen))
+			out = append(out, agui.NewTextMessageStartEvent(v.MessageID, agui.WithRole("assistant")))
+			st.textOpen = v.MessageID
 		}
-		return agui.NewTextMessageContentEvent(v.MessageID, v.Text)
+		out = append(out, agui.NewTextMessageContentEvent(v.MessageID, v.Text))
+		return out
 	case driver.ThinkingDelta:
-		if !st.thinkOpen[v.MessageID] {
-			st.thinkOpen[v.MessageID] = true
+		var out []agui.Event
+		if st.thinkingOpen == "" {
+			out = append(out, st.closeText()...)
+			out = append(out, agui.NewReasoningMessageStartEvent(v.MessageID, "assistant"))
+			st.thinkingOpen = v.MessageID
+		} else if st.thinkingOpen != v.MessageID {
+			out = append(out, agui.NewReasoningMessageEndEvent(st.thinkingOpen))
+			out = append(out, agui.NewReasoningMessageStartEvent(v.MessageID, "assistant"))
+			st.thinkingOpen = v.MessageID
 		}
-		return agui.NewReasoningMessageContentEvent(v.MessageID, v.Text)
+		out = append(out, agui.NewReasoningMessageContentEvent(v.MessageID, v.Text))
+		return out
 	case driver.ToolCallStart:
-		return agui.NewToolCallStartEvent(v.ToolCallID, v.ToolCallName)
+		return []agui.Event{agui.NewToolCallStartEvent(v.ToolCallID, v.ToolCallName)}
 	case driver.ToolCallArgs:
-		return agui.NewToolCallArgsEvent(v.ToolCallID, v.Delta)
+		return []agui.Event{agui.NewToolCallArgsEvent(v.ToolCallID, v.Delta)}
 	case driver.ToolCallEnd:
-		return agui.NewToolCallEndEvent(v.ToolCallID)
+		return []agui.Event{agui.NewToolCallEndEvent(v.ToolCallID)}
 	case driver.ToolCallResult:
-		return agui.NewToolCallResultEvent(v.ToolCallID, v.ToolCallID, v.Content)
+		return []agui.Event{agui.NewToolCallResultEvent(v.ToolCallID, v.ToolCallID, v.Content)}
 	case driver.RunFinished:
-		return agui.NewRunFinishedEvent(st.threadID, st.runID)
+		out := append(st.closeThinking(), st.closeText()...)
+		out = append(out, agui.NewRunFinishedEvent(st.threadID, st.runID))
+		return out
 	case driver.RunError:
-		return agui.NewRunErrorEvent(v.Message)
+		out := append(st.closeThinking(), st.closeText()...)
+		out = append(out, agui.NewRunErrorEvent(v.Message))
+		return out
 	case driver.TerminalEvent:
-		return nil
+		out := append(st.closeThinking(), st.closeText()...)
+		return out
 	default:
 		return nil
 	}

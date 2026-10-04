@@ -179,17 +179,23 @@ func (s *Server) handleAGUI(w http.ResponseWriter, r *http.Request) {
 			}
 			idle = false
 			if _, isTerm := ev.(driver.TerminalEvent); isTerm {
+				// still emit closing ENDs for any open message blocks.
+				for _, closing := range state.toAGUI(ev) {
+					if err := writer.WriteEventWithType(ctx, w, closing, string(closing.GetBaseEvent().Type())); err != nil {
+						slog.Warn("agui write failed", "err", err)
+						return
+					}
+					flusher.Flush()
+				}
 				return
 			}
-			aguiEvent := state.toAGUI(ev)
-			if aguiEvent == nil {
-				continue
+			for _, aguiEvent := range state.toAGUI(ev) {
+				if err := writer.WriteEventWithType(ctx, w, aguiEvent, string(aguiEvent.GetBaseEvent().Type())); err != nil {
+					slog.Warn("agui write failed", "err", err)
+					return
+				}
+				flusher.Flush()
 			}
-			if err := writer.WriteEventWithType(ctx, w, aguiEvent, string(aguiEventType(ev))); err != nil {
-				slog.Warn("agui write failed", "err", err)
-				return
-			}
-			flusher.Flush()
 		case <-keepalive.C:
 			if idle {
 				_, _ = fmt.Fprint(w, ": keepalive\n\n")
