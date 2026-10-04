@@ -146,7 +146,8 @@
     <div id="browserpanel"></div>
   </div>
   <script type="module">
-    import {HttpAgent} from "https://esm.sh/@ag-ui/client";
+    // Self-contained AG-UI consumer: fetch + manual SSE parse over POST /ag-ui.
+    // No external client lib (esm.sh) — the wire shape we speak is our own.
     const KEY = "agent-host-ag-ui-thread";
     let threadId = localStorage.getItem(KEY);
     if (!threadId) {
@@ -157,76 +158,131 @@
 
     const logEl = document.getElementById("log");
     const eventLog = document.getElementById("eventlog");
-    const events = [];
+    const seen = [];
     function addEvent(ev) {
-      events.push(JSON.stringify(ev));
-      if (events.length > 100) events.shift();
-      eventLog.textContent = events.join("\n");
+      seen.push(JSON.stringify(ev));
+      if (seen.length > 100) seen.shift();
+      eventLog.textContent = seen.join("\n");
     }
 
-    let currentAssistant = null;
-    function append(role, text, cls) {
+    function append(cls, text) {
       const d = document.createElement("div");
       d.className = "msg " + cls;
       d.textContent = text;
       logEl.appendChild(d);
+      logEl.scrollTop = logEl.scrollHeight;
       return d;
     }
 
-    const agent = new HttpAgent({url: "/ag-ui", threadId});
-
-    agent.subscribeEvent?.((ev) => addEvent(ev));
-
-    agent.on("text_message_start", (ev) => {
-      currentAssistant = append("assistant", "", "assistant");
-    });
-    agent.on("text_message_content", (ev) => {
-      if (currentAssistant) currentAssistant.textContent += ev.delta;
-    });
-    agent.on("text_message_end", () => {currentAssistant = null;});
-    agent.on("tool_call_start", (ev) => {
-      const d = document.createElement("div");
-      d.className = "tool";
-      d.id = "tool-" + ev.toolCallId;
-      d.textContent = "🔧 " + ev.toolCallName;
-      logEl.appendChild(d);
-    });
-    agent.on("tool_call_args", (ev) => {
-      const d = document.getElementById("tool-" + ev.toolCallId);
-      if (d) d.textContent += ev.delta;
-    });
-    agent.on("tool_call_result", (ev) => {
-      const d = document.createElement("div");
-      d.className = "toolresult";
-      d.textContent = ev.content;
-      logEl.appendChild(d);
-    });
-    agent.on("run_error", (ev) => {
-      append("", "⚠️ " + (ev.message || "run error"), "error");
-    });
-    agent.on("activity_snapshot", (ev) => {
-      const panel = document.getElementById("browserpanel");
-      const img = document.createElement("img");
-      img.src = ev.snapshot?.screenshot || ev.content;
-      panel.replaceChildren(img);
-    });
-
-    document.getElementById("send").onclick = async () => {
-      const input = document.getElementById("input");
-      const text = input.value.trim();
-      if (!text) return;
-      input.value = "";
-      append("user", text, "user");
-      agent.messages.push({id: "m" + Date.now(), role: "user", content: text});
-      try {await agent.runAgent();} catch (e) {append("", "⚠️ " + e, "error");}
-    };
-    document.getElementById("input").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") document.getElementById("send").click();
-    });
     document.getElementById("reset").onclick = () => {
       localStorage.removeItem(KEY);
       location.reload();
     };
+
+    // Wire shape (AG-UI): uppercase event `type` on every data line.
+    // dispatch by that type so nothing depends on a client lib's mapping.
+    const handlers = {
+      RUN_STARTED: () => {window.__curAssistant = append("assistant", "");},
+      TEXT_MESSAGE_START: () => {window.__curAssistant = append("assistant", "");},
+      TEXT_MESSAGE_CONTENT: (ev) => {
+        if (window.__curAssistant) window.__curAssistant.textContent += ev.delta;
+      },
+      TEXT_MESSAGE_END: () => {window.__curAssistant = null;},
+      REASONING_MESSAGE_CONTENT: (ev) => {
+        // thinking text renders into its own italic block
+        if (!window.__curThinking) window.__curThinking = append("thinking", "");
+        window.__curThinking.textContent += ev.delta;
+      },
+      REASONING_MESSAGE_END: () => {window.__curThinking = null;},
+      TOOL_CALL_START: (ev) => {
+        const d = document.createElement("div");
+        d.className = "tool";
+        d.id = "tool-" + ev.toolCallId;
+        d.textContent = "tool " + ev.toolCallName + " ";
+        logEl.appendChild(d);
+      },
+      TOOL_CALL_ARGS: (ev) => {
+        const d = document.getElementById("tool-" + ev.toolCallId);
+        if (d) d.textContent += ev.delta;
+      },
+      TOOL_CALL_END: () => { },
+      TOOL_CALL_RESULT: (ev) => {
+        const d = document.createElement("div");
+        d.className = "toolresult";
+        d.textContent = ev.content;
+        logEl.appendChild(d);
+      },
+      ACTIVITY_SNAPSHOT: (ev) => {
+        // Content carries the screenshot; our server emits
+        // {screenshot: "data:image/png;base64,…", mime}
+        const panelEl = document.getElementById("browserpanel");
+        if (!panelEl) return;
+        const src = (typeof ev.content === "string")
+          ? ev.content
+          : ev.content?.screenshot;
+        if (typeof src !== "string" || !src.startsWith("data:image")) return;
+        const img = document.createElement("img");
+        img.src = src;
+        panelEl.replaceChildren(img);
+      },
+      RUN_FINISHED: () => {
+        window.__curAssistant = null;
+        window.__curThinking = null;
+      },
+      RUN_ERROR: (ev) => {
+        append("error", "Error: " + (ev.message || "run error"));
+      },
+    };
+
+    async function runAgent(userText) {
+      append("user", userText);
+      const body = JSON.stringify({
+        threadId,
+        runId: "gui-" + Date.now(),
+        messages: [{id: "m" + Date.now(), role: "user", content: userText}],
+      });
+      const resp = await fetch("/ag-ui", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body,
+      });
+      if (!resp.ok || !resp.body) {
+        const txt = await resp.text().catch(() => "");
+        append("error", "Fetch failed " + resp.status + " " + txt);
+        return;
+      }
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (; ;) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, {stream: true});
+        let idx;
+        while ((idx = buf.indexOf("\n")) !== -1) {
+          const line = buf.slice(0, idx);
+          buf = buf.slice(idx + 1);
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6);
+          let ev;
+          try {ev = JSON.parse(data);} catch {continue;}
+          addEvent(ev);
+          const h = handlers[ev.type];
+          if (h) h(ev);
+        }
+      }
+    }
+
+    document.getElementById("send").onclick = () => {
+      const input = document.getElementById("input");
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+      runAgent(text).catch(e => append("error", String(e)));
+    };
+    document.getElementById("input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") document.getElementById("send").click();
+    });
   </script>
 </body>
 
