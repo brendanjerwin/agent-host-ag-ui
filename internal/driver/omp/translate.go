@@ -27,6 +27,11 @@ type translator struct {
 	// id arrives only at toolcall_end. An open state holds a placeholder
 	// id (idx-<n>) adopted/renamed when the end frame arrives.
 	toolByIndex map[int64]*openTool
+	// ompToAGUI maps omp's real toolCallId (from toolcall_end and
+	// tool_execution_end) to the stable AG-UI-facing placeholder id.
+	ompToAGUI map[string]string
+	// toolNames caches omp toolCallId -> display name for results.
+	toolNames map[string]string
 	// lastAssistantStopReason is the stop reason of the final assistant
 	// message, used to detect error tails.
 	lastAssistantStopReason string
@@ -63,6 +68,8 @@ func newTranslator(threadID, runID string) *translator {
 		threadID:    threadID,
 		runID:       runID,
 		toolByIndex: map[int64]*openTool{},
+		ompToAGUI:   map[string]string{},
+		toolNames:   map[string]string{},
 	}
 }
 
@@ -88,9 +95,15 @@ func (t *translator) translate(ctx context.Context, frame omprpc.RpcServerFrame,
 		return translatorContinue, ""
 	case omprpc.ToolExecutionEndEvent:
 		if len(v.Result) > 0 {
+			// Resolve to the stable AG-UI-facing id; unmatched omp ids
+			// (subagent/detail calls) mint their own.
+			aguiID, ok := t.ompToAGUI[v.ToolCallID]
+			if !ok {
+				aguiID = "tc-exec-" + v.ToolCallID
+			}
 			content := truncateContent(v.Result)
 			emit(ctx, out, driver.ToolCallResult{
-				ToolCallID: v.ToolCallID,
+				ToolCallID: aguiID,
 				ToolName:   v.ToolName,
 				Content:    content,
 				IsError:    v.IsError != nil && *v.IsError,
@@ -216,24 +229,19 @@ func (t *translator) translateAssistantEvent(ctx context.Context, mu omprpc.Mess
 	case omprpc.AssistantToolCallEndEvent:
 		ot, ok := t.toolByIndex[ev.ContentIndex]
 		if !ok {
-			// never streamed: emit START + END now with the real id.
+			// never streamed: mint an AG-UI id and register the omp id.
+			ot = &openTool{id: fmt.Sprintf("tc-omp-%s", ev.ToolCall.ID), started: false}
+		}
+		ot.name = ev.ToolCall.Name
+		// Register the AG-UI-facing id for later tool_execution_end pairing;
+		// the AG-UI id stays stable across START/ARGS/RESULT/END.
+		t.ompToAGUI[ev.ToolCall.ID] = ot.id
+		if !ot.started {
 			emit(ctx, out, driver.ToolCallStart{
-				ToolCallID:   ev.ToolCall.ID,
+				ToolCallID:   ot.id,
 				ToolCallName: ev.ToolCall.Name,
 				MessageID:    msgID,
 			})
-			ot = &openTool{id: ev.ToolCall.ID, started: true}
-		} else if ot.id != ev.ToolCall.ID {
-			// Adopt the real omp id; ARGS already emitted carry the
-			// placeholder id, so re-open under the real id with the
-			// accumulated args delta for consumers that keyed by id.
-			ot.id = ev.ToolCall.ID
-			if ev.ToolCall.Name != "" {
-				ot.name = ev.ToolCall.Name
-			}
-		}
-		if ot.name != "" && ev.ToolCall.Name != "" {
-			ot.name = ev.ToolCall.Name
 		}
 		emit(ctx, out, driver.ToolCallEnd{ToolCallID: ot.id})
 		delete(t.toolByIndex, ev.ContentIndex)

@@ -165,8 +165,8 @@ func TestToolCallLifecycle(t *testing.T) {
 		"start:tc-idx-0:read",
 		"args:tc-idx-0:{\"a\":",
 		"args:tc-idx-0:1}",
-		"end:toolu_1",
-		"result:toolu_1:file body",
+		"end:tc-idx-0",
+		"result:tc-idx-0:file body",
 		"FINISHED",
 	}
 	if len(kinds) != len(want) {
