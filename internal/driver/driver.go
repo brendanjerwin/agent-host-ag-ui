@@ -148,6 +148,18 @@ type ToolCallResult struct {
 
 func (ToolCallResult) isStreamEvent() {}
 
+// ActivitySnapshot carries a browser screenshot (or other rich tool output)
+// that streams as an ACTIVITY_SNAPSHOT on the AG-UI face.
+type ActivitySnapshot struct {
+	ToolCallID string
+	// Mime: image/png etc.
+	MimeType string
+	// Base64 is the inline image payload.
+	Base64 string
+}
+
+func (ActivitySnapshot) isStreamEvent() {}
+
 // RunFinished is the successful terminal event.
 type RunFinished struct {
 	ThreadID string

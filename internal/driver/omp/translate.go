@@ -101,13 +101,23 @@ func (t *translator) translate(ctx context.Context, frame omprpc.RpcServerFrame,
 			if !ok {
 				aguiID = "tc-exec-" + v.ToolCallID
 			}
-			content := truncateContent(v.Result)
-			emit(ctx, out, driver.ToolCallResult{
-				ToolCallID: aguiID,
-				ToolName:   v.ToolName,
-				Content:    content,
-				IsError:    v.IsError != nil && *v.IsError,
-			})
+			// Image-bearing results (browser screenshots) ride an
+			// ActivitySnapshot instead of a truncated text result.
+			if mime, b64, isImage := imageContentOf(v.Result); isImage {
+				emit(ctx, out, driver.ActivitySnapshot{
+					ToolCallID: aguiID,
+					MimeType:   mime,
+					Base64:     b64,
+				})
+			} else {
+				content := truncateContent(v.Result)
+				emit(ctx, out, driver.ToolCallResult{
+					ToolCallID: aguiID,
+					ToolName:   v.ToolName,
+					Content:    content,
+					IsError:    v.IsError != nil && *v.IsError,
+				})
+			}
 		}
 		return translatorContinue, ""
 	case omprpc.AgentEndEvent:
@@ -326,4 +336,33 @@ func truncateRunes(s string, max int) string {
 		return s
 	}
 	return string(r[:max]) + "…[truncated]"
+}
+
+// imageContentOf reports whether a raw tool result is an image content block
+// and returns its mime + base64 data (HostToolResultPayload-shaped:
+// {"content":[{"type":"image","data":<b64>,"mimeType":...}]}).
+func imageContentOf(raw json.RawMessage) (string, string, bool) {
+	var payload struct {
+		Content []map[string]json.RawMessage `json:"content"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return "", "", false
+	}
+	for _, block := range payload.Content {
+		if t, ok := block["type"]; !ok || string(t) != "image" {
+			continue
+		}
+		var full struct {
+			Data     string `json:"data"`
+			MimeType string `json:"mimeType"`
+		}
+		b, _ := json.Marshal(block)
+		if err := json.Unmarshal(b, &full); err != nil {
+			continue
+		}
+		if full.Data != "" && full.MimeType != "" {
+			return full.MimeType, full.Data, true
+		}
+	}
+	return "", "", false
 }

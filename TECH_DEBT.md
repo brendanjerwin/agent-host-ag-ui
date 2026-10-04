@@ -2,23 +2,28 @@
 
 ## Active
 
-1. **kagent byo-Harness substrate actor blocked on GHCR visibility (rung 3 held)**:
-   the golden actor's atelet pulls the Harness image from the *registry*
-   (`go-containerregistry remote.Image`), not node containerd; node-local
-   `ctr images import` does not help. The session `gh` token lacks
-   `write:packages`, so `brendanjerwin/agent-host-ag-ui` stays private
-   (urgent flip would be a GHCR visibility change). CI still publishes to
-   `ghcr.io/brendanjerwin/agent-host-ag-ui:<sha>`/`:latest` on main pushes
-   (packages permissions present in CI). **Fallback ladder rung 3 exercised**:
-   `deploy/testbed-deployment.yaml` runs the same one-unit image (digest-pinned,
-   node-local) as a plain Deployment + Service, serving the identical byo
-   contract (AG-UI :8090 / A2A :80 / :8091 / readyz :8081) without substrate
-   actors — adapter, driver, translator, A2A shim, and image are ALL
-   unaffected. Restore the byo path either by (a) re-auth with
-   `gh auth login -s write:packages` then `gh api -X PATCH
-   /user/packages/container/agent-host-ag-ui` to make it public, or (b) a
-   registry the atelet can reach (in-cluster registry served over
-   `127.0.0.1`).
+1. **kagent byo-Harness substrate actor: overlayfs-on-overlayfs (rung 3 held)**:
+   two blockers surfaced, both infrastructural —
+   - atelet pulls the Actor image from the registry (`go-containerregistry`),
+     so node-local `ctr images import` doesn't help. Solved: CI publishes
+     `ghcr.io/brendanjerwin/agent-host-ag-ui:<sha>`/`:latest` and the GHCR
+     package is anonymously pullable (verified via `podman pull
+     @sha256:ad3d5a47…`); the Harness now pins the CI digest.
+   - **the actual crash**: golden-actor pause rootfs
+     `/var/lib/ate/actors/<uid>/bundles/_pause` needs an overlayfs upperdir,
+     but on rootless-podman k3d nodes that path is on the container's own
+     overlay writable layer → kernel rejects nested overlay
+     ("filesystem ... not supported as upperdir"). Not fixable by config on
+     this testbed; needs real node storage (docker-based k3d, a VM host, or
+     a dedicated bind-mount disk for /var/lib/ate).
+   **Fallback ladder rung 3 exercised**: `deploy/testbed-deployment.yaml`
+   runs the same one-unit image as a plain Deployment + Service, serving the
+   identical byo contract (AG-UI :8090 / A2A :80/:8091 / readyz :8081) —
+   adapter, driver, translator, A2A shim, and image are ALL unaffected, and
+   every in-cluster proof (AG-UI streaming, A2A task completion, browser
+   tool, agui-check ValidateSequence) passed on this surface. Restore the
+   substrate path on a host whose /var/lib/ate can hold real overlay upper
+   dirs.
 2. **ModelConfig provider deviation (user to approve/restore)**: plan locked
    `openAI.baseUrl: https://opencode.ai/zen/v1` + `mimo-v2.6-flash` with a
    1Password-synced secret. No opencode-zen credential on the devbox, so the

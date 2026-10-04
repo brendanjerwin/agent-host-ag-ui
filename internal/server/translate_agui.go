@@ -22,6 +22,8 @@ func aguiEventType(ev driver.StreamEvent) agui.EventType {
 		return agui.EventTypeToolCallEnd
 	case driver.ToolCallResult:
 		return agui.EventTypeToolCallResult
+	case driver.ActivitySnapshot:
+		return agui.EventTypeActivitySnapshot
 	case driver.RunFinished:
 		return agui.EventTypeRunFinished
 	case driver.RunError:
@@ -109,6 +111,15 @@ func (st *streamState) toAGUI(ev driver.StreamEvent) []agui.Event {
 		return []agui.Event{agui.NewToolCallEndEvent(v.ToolCallID)}
 	case driver.ToolCallResult:
 		return []agui.Event{agui.NewToolCallResultEvent(v.ToolCallID, v.ToolCallID, v.Content)}
+	case driver.ActivitySnapshot:
+		return []agui.Event{agui.NewActivitySnapshotEvent(
+			v.ToolCallID,
+			"browser_screenshot",
+			map[string]any{
+				"screenshot": "data:" + v.MimeType + ";base64," + v.Base64,
+				"mime":       v.MimeType,
+			},
+		)}
 	case driver.RunFinished:
 		out := append(st.closeThinking(), st.closeText()...)
 		out = append(out, agui.NewRunFinishedEvent(st.threadID, st.runID))
