@@ -195,7 +195,47 @@ func TestErrorTerminal(t *testing.T) {
 	}
 }
 
-// TestAbortedNoEmission locks: aborted prompt_result emits nothing.
+// TestScreenshotRidesActivitySnapshot locks: browser_screenshot image
+// results map to an ActivitySnapshot driver event (mime + base64), and
+// unrelated text results keep going through ToolCallResult.
+func TestScreenshotRidesActivitySnapshot(t *testing.T) {
+	pngB64 := "iVBORw0KGgoA" // header bytes of a PNG, base64
+	frames := []string{
+		`{"type":"message_start","messageId":"m1","message":{"role":"assistant","content":[]}}`,
+		`{"type":"message_update","messageId":"m1","assistantMessageEvent":{"type":"toolcall_start","contentIndex":0,"partial":{"role":"assistant","content":[{"type":"toolCall","id":"toolu_shot","name":"browser_screenshot","arguments":{}}]}},"message":{"role":"assistant","content":[]}}`,
+		`{"type":"message_update","messageId":"m1","assistantMessageEvent":{"type":"toolcall_end","contentIndex":0,"toolCall":{"type":"toolCall","id":"toolu_shot","name":"browser_screenshot","arguments":{}},"partial":{"role":"assistant","content":[]}},"message":{"role":"assistant","content":[]}}`,
+		`{"type":"tool_execution_end","toolCallId":"toolu_shot","toolName":"browser_screenshot","result":{"content":[{"type":"image","data":"` + pngB64 + `","mimeType":"image/png"}]},"isError":false}`,
+		`{"type":"agent_end","messages":[],"isTerminal":true,"yielded":true}`,
+	}
+	evs := collect(t, frames)
+	var kinds []string
+	for _, ev := range evs {
+		switch e := ev.(type) {
+		case driver.ActivitySnapshot:
+			kinds = append(kinds, "activity:"+e.MimeType+":"+e.Base64)
+		case driver.ToolCallStart:
+			kinds = append(kinds, "start:"+e.ToolCallName)
+		case driver.ToolCallEnd:
+			kinds = append(kinds, "end")
+		case driver.ToolCallResult:
+			t.Errorf("screenshot fell through to text result: %#v", e)
+		case driver.RunFinished:
+			kinds = append(kinds, "FINISHED")
+		default:
+			t.Errorf("unexpected event %#v", ev)
+		}
+	}
+	want := []string{"start:browser_screenshot", "end", "activity:image/png:" + pngB64, "FINISHED"}
+	if len(kinds) != len(want) {
+		t.Fatalf("got %#v", kinds)
+	}
+	for i := range want {
+		if kinds[i] != want[i] {
+			t.Errorf("event %d: %s != %s", i, kinds[i], want[i])
+		}
+	}
+}
+
 func TestAbortedNoEmission(t *testing.T) {
 	frames := []string{
 		`{"type":"agent_start"}`,

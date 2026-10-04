@@ -349,7 +349,8 @@ func imageContentOf(raw json.RawMessage) (string, string, bool) {
 		return "", "", false
 	}
 	for _, block := range payload.Content {
-		if t, ok := block["type"]; !ok || string(t) != "image" {
+		var blockType string
+		if t, ok := block["type"]; !ok || json.Unmarshal(t, &blockType) != nil || blockType != "image" {
 			continue
 		}
 		var full struct {
