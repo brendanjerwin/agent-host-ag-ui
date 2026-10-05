@@ -2,6 +2,16 @@
 
 ## Active
 
+0. **Substrate actor (byo Harness) blocked, deferred; rung-3 is the live surface**:
+   after the agent node's kubelet wedged (sandbox creation broke: PodReadyToStartContainers
+   False on agent-node pods, atelet stuck ContainerCreating >1h across a 4x node restart),
+   the byo-Harness path needs a clean cluster rebuild per deploy/README.md. NOT blocking:
+   the rung-3 plain Deployment serves the identical byo contract and is what the Dojo
+   talks to. When rebuilding: re-run the kubectl-ate identity bootstrap BEFORE any helm
+   --wait, then patch atelet volumes only AFTER a healthy golden Actor smoke. Do not
+   delete allocated Running pods in a wedged node (it made things worse and killed
+   healthy rustfs/egress pods in the process).
+
 1. **kagent byo-Harness substrate actor: overlayfs-on-overlayfs (rung 3 held)**:
    two blockers surfaced, both infrastructural —
    - atelet pulls the Actor image from the registry (`go-containerregistry`),
