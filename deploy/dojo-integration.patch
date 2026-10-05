@@ -1,0 +1,128 @@
+apps/dojo/scripts/generate-content-json.ts --- TypeScript
+104 104   string,
+105 105   (agentKeys: string[]) => Record<string, string[]>
+106 106 > = {
+... 107   // agent-host-ag-ui: adapter lives in a separate repo; the dojo proxies to
+... 108   // it via AGENT_HOST_AG_UI_URL, so there is no in-repo agent source file.
+... 109   "agent-host-ag-ui": () => ({
+... 110     agentic_chat: [],
+... 111   }),
+107 112   "middleware-starter": () => ({
+108 113     agentic_chat: [
+109 114       path.join(
+
+apps/dojo/src/agents.ts --- TypeScript
+128 128       },
+129 129     ),
+... 130 
+... 131   "agent-host-ag-ui": async () => ({
+... 132     agentic_chat: new HttpAgent({ url: envVars.agentHostAgUiUrl }),
+... 133   }),
+130 134 
+131 135   "server-starter": async () => ({
+132 136     agentic_chat: new ServerStarterAgent({ url: envVars.serverStarterUrl }),
+
+apps/dojo/src/app/page.tsx --- TypeScript TSX
+ 1 "use client";                          1 "use client";
+ 2                                        2 
+ 3 import React from "react";             3 import React, { useEffect } from "re
+ .                                        . act";
+ .                                        4 import { useRouter } from "next/navi
+ .                                        . gation";
+ 4                                        5 
+ 5 export default function Home() {       6 export default function Home() {
+ .                                        7   const router = useRouter();
+ .                                        8   useEffect(() => {
+ .                                        9     // Single-integration deployment
+ .                                        . : land directly on our agent's chat.
+ .                                       10     router.replace("/agent-host-ag-u
+ .                                       .. i/feature/agentic_chat");
+ .                                       11   }, [router]);
+ 6   return (                            12   return (
+ 7     <div className="flex-1 h-screen   13     <div className="flex-1 h-screen 
+ . w-full flex flex-col items-center ju  .. w-full flex flex-col items-center ju
+ . stify-center p-8">                    .. stify-center p-8">
+ 8       <h1 className="text-base font-  14       <h1 className="text-base font-
+ . normal text-muted-foreground mb-4">   .. normal text-muted-foreground mb-4">
+ 9         Select an integration to get  15         Loading agent chat…
+ .  started                              .. 
+10       </h1>                           16       </h1>
+11     </div>                            17     </div>
+12   );                                  18   );
+13 }                                     19 }
+
+apps/dojo/src/contexts/url-params-context.tsx --- TypeScript TSX
+39     view: (searchParams.get("view")   39     view: (searchParams.get("view") 
+.. as View) || "preview",                .. as View) || "preview",
+40     sidebarHidden: searchParams.get(  40     sidebarHidden: searchParams.get(
+.. "sidebar") === "false",               .. "sidebar") === "false",
+41     chatDefaultOpen: searchParams.ge  41     chatDefaultOpen: searchParams.ge
+.. t("chatDefaultOpen") !== "false",     .. t("chatDefaultOpen") !== "false",
+..                                       42     // Single-integration deployment
+..                                       .. : hide the integration picker unless
+..                                       43     // explicitly re-enabled with ?f
+..                                       .. rameworkPicker=true.
+42     frameworkPickerHidden: searchPar  44     frameworkPickerHidden: searchPar
+.. ams.get("frameworkPicker") === "fals  .. ams.get("frameworkPicker") !== "true
+.. e",                                   .. ",
+43     viewPickerHidden: searchParams.g  45     viewPickerHidden: searchParams.g
+.. et("viewPicker") === "false",         .. et("viewPicker") === "false",
+44     featurePickerHidden: searchParam  46     featurePickerHidden: searchParam
+.. s.get("featurePicker") === "false",   .. s.get("featurePicker") === "false",
+45     file: searchParams.get("file") |  47     file: searchParams.get("file") |
+.. | undefined,                          .. | undefined,
+
+apps/dojo/src/env.ts --- 1/2 --- TypeScript
+ 2  2   ag2Url: string;
+ 3  3   serverStarterUrl: string;
+ 4  4   serverStarterAllFeaturesUrl: string;
+ .  5   agentHostAgUiUrl: string;
+ 5  6   mastraUrl: string;
+ 6  7   langgraphPythonUrl: string;
+ 7  8   langgraphFastApiUrl: string;
+
+apps/dojo/src/env.ts --- 2/2 --- TypeScript
+49 50 
+50 51   return {
+51 52     ag2Url: process.env.AG2_URL || "http://localhost:8018",
+.. 53     agentHostAgUiUrl:
+.. 54       process.env.AGENT_HOST_AG_UI_URL || "http://localhost:18090/ag-ui",
+52 55     serverStarterUrl: process.env.SERVER_STARTER_URL || "http://localhost:8000",
+53 56     serverStarterAllFeaturesUrl:
+54 57       process.env.SERVER_STARTER_ALL_FEATURES_URL || "http://localhost:8000",
+
+apps/dojo/src/files.json --- Text (5.1 MiB exceeded DFT_BYTE_LIMIT)
+3431 3431       "type": "file"
+3432 3432     }
+3433 3433   ],
+.... 3434   "agent-host-ag-ui::agentic_chat": [
+.... 3435     {
+.... 3436       "name": "page.tsx",
+.... 3437       "content": "\"use client\";\nimport React, { useState } from \"react\";\nimport \"@copilotkit/react-core/v2/styles.css\";\nimport { \n  useFrontendTool,\n  useRenderTool,\n  useAgentContext,\n  useConfigureSuggestions,\n  CopilotChat,\n} from \"@copilotkit/react-core/v2\";\nimport { z } from \"zod\";\nimport { CopilotKit } from \"@copilotkit/react-core\";\n\n/** Shape of the `get_weather` tool result once parsed out of its JSON string. */\ntype WeatherResult = {\n  city?: string;\n  temperature?: number;\n  humidity?: number;\n  windSpeed?: number;\n  wind_speed?: number;\n  conditions?: string;\n};\n\ninterface AgenticChatProps {\n  params: Promise<{\n    integrationId: string;\n  }>;\n}\n\nconst AgenticChat: React.FC<AgenticChatProps> = ({ params }) => {\n  const { integrationId } = React.use(params);\n\n  return (\n    <CopilotKit\n      runtimeUrl={`/api/copilotkit/${integrationId}`}\n      showDevConsole={false}\n      agent=\"agentic_chat\"\n    >\n      <Chat />\n    </CopilotKit>\n  );\n};\n\nconst Chat = () => {\n  const [background, setBackground] = useState<string>(\"--copilot-kit-background-color\");\n\n  useAgentContext({\n    description: 'Name of the user',\n    value: 'Bob'\n  });\n\n  useFrontendTool({\n    name: \"change_background\",\n    description:\n      \"Change the background color of the chat. Can be anything that the CSS background attribute accepts. Regular colors, linear of radial gradients etc.\",\n    parameters: z.object({\n      background: z.string().describe(\"The background. Prefer gradients. Only use when asked.\"),\n    }) ,\n    handler: async ({ background }: { background: string }) => {\n      setBackground(background);\n      return {\n        status: \"success\",\n        message: `Background changed to ${background}`,\n      };\n    },\n  });\n\n  useRenderTool({\n    name: \"get_weather\",\n    parameters: z.object({\n      location: z.string(),\n    })  ,\n    render: ({ parameters, result, status }) => {\n      if (status !== \"complete\") {\n        return <div data-testid=\"weather-info-loading\">Loading weather...</div>;\n      }\n\n      // Some integrations (e.g. LangGraph) deliver tool results as a JSON-encoded\n      // string in the ToolMessage content rather than a parsed object. Normalize\n      // so property access works in either case; otherwise every field reads as\n      // undefined and the card renders empty values.\n      let parsed: unknown = result;\n      if (typeof parsed === \"string\") {\n        try {\n          parsed = JSON.parse(parsed);\n        } catch {\n          parsed = {};\n        }\n      }\n      const weather = (parsed ?? {}) as WeatherResult;\n\n      return (\n        <div data-testid=\"weather-info\">\n          <strong>Weather in {weather.city ?? parameters.location}</strong>\n          <div>Temperature: {weather.temperature}°C</div>\n          <div>Humidity: {weather.humidity}%</div>\n          <div>Wind Speed: {weather.windSpeed ?? weather.wind_speed} mph</div>\n          <div>Conditions: {weather.conditions}</div>\n        </div>\n      );\n    },\n  });\n\n  useConfigureSuggestions({\n    suggestions: [\n      {\n        title: \"Change background\",\n        message: \"Change the background to something new.\",\n      },\n      {\n        title: \"Generate sonnet\",\n        message: \"Write a short sonnet about AI.\",\n      },\n    ],\n    available: \"always\",\n  });\n\n  return (\n    <div\n      className=\"flex justify-center items-center h-full w-full\"\n      data-testid=\"background-container\"\n      style={{ background }}\n    >\n      <div className=\"h-full w-full md:w-8/10 md:h-8/10 rounded-lg\">\n        <CopilotChat\n          agentId=\"agentic_chat\"\n          className=\"h-full rounded-2xl max-w-6xl mx-auto\"\n        />\n      </div>\n    </div>\n  );\n};\n\nexport default AgenticChat;\n",
+.... 3438       "language": "typescript",
+.... 3439       "type": "file"
+.... 3440     },
+.... 3441     {
+.... 3442       "name": "README.mdx",
+.... 3443       "content": "# 🤖 Agentic Chat with Frontend Tools\n\n## What This Demo Shows\n\nThis demo showcases CopilotKit's **agentic chat** capabilities with **frontend\ntool integration**:\n\n1. **Natural Conversation**: Chat with your Copilot in a familiar chat interface\n2. **Frontend Tool Execution**: The Copilot can directly interacts with your UI\n   by calling frontend functions\n3. **Seamless Integration**: Tools defined in the frontend and automatically\n   discovered and made available to the agent\n\n## How to Interact\n\nTry asking your Copilot to:\n\n- \"Can you change the background color to something more vibrant?\"\n- \"Make the background a blue to purple gradient\"\n- \"Set the background to a sunset-themed gradient\"\n- \"Change it back to a simple light color\"\n\nYou can also chat about other topics - the agent will respond conversationally\nwhile having the ability to use your UI tools when appropriate.\n\n## ✨ Frontend Tool Integration in Action\n\n**What's happening technically:**\n\n- The React component defines a frontend function using `useCopilotAction`\n- CopilotKit automatically exposes this function to the agent\n- When you make a request, the agent determines whether to use the tool\n- The agent calls the function with the appropriate parameters\n- The UI immediately updates in response\n\n**What you'll see in this demo:**\n\n- The Copilot understands requests to change the background\n- It generates CSS values for colors and gradients\n- When it calls the tool, the background changes instantly\n- The agent provides a conversational response about the changes it made\n\nThis technique of exposing frontend functions to your Copilot can be extended to\nany UI manipulation you want to enable, from theme changes to data filtering,\nnavigation, or complex UI state management!\n",
+.... 3444       "language": "markdown",
+.... 3445       "type": "file"
+.... 3446     }
+.... 3447   ],
+3434 3448   "ag-ui-dotnet::agentic_chat": [
+3435 3449     {
+3436 3450       "name": "page.tsx",
+
+apps/dojo/src/menu.ts --- TypeScript
+244 244       "subgraphs",
+245 245     ],
+246 246   },
+... 247   {
+... 248     id: "agent-host-ag-ui",
+... 249     name: "agent-host-ag-ui (omp)",
+... 250     features: ["agentic_chat"],
+... 251   },
+247 252   {
+248 253     id: "ag-ui-dotnet",
+249 254     name: "AG-UI .NET SDK",
+

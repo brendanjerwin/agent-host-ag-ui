@@ -3,286 +3,800 @@
 
 <head>
   <meta charset="utf-8">
-  <title>agent-host-ag-ui test GUI</title>
+  <title>agent-host-ag-ui playground</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js" crossorigin></script>
   <style>
     :root {
       color-scheme: dark;
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel2: #1c2129;
+      --line: #30363d;
+      --text: #e6edf3;
+      --dim: #8b949e;
+      --acc: #58a6ff;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --err: #f85149;
+      --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
     }
 
     body {
-      font-family: system-ui, sans-serif;
       margin: 0;
-      display: flex;
       height: 100vh;
-      background: #111;
-      color: #eee;
-    }
-
-    #left {
-      width: 60%;
       display: flex;
       flex-direction: column;
-      border-right: 1px solid #333;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
     }
 
-    #right {
-      width: 40%;
-      padding: 1rem;
-      overflow-y: auto;
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
     }
 
-    #log {
-      flex: 1;
-      overflow-y: auto;
-      padding: 1rem;
+    header .logo {
+      font-weight: 700;
+      letter-spacing: 0.5px;
     }
 
-    .msg {
-      margin: 0.5rem 0;
-      padding: 0.5rem 0.75rem;
-      border-radius: 8px;
-      max-width: 85%;
+    header .logo span {
+      color: var(--acc);
     }
 
-    .user {
-      background: #1e3a5f;
+    header .thread {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--dim);
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      padding: 3px 10px;
+      border-radius: 12px;
+    }
+
+    header .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+    }
+
+    header .dot.busy {
+      background: var(--warn);
+      animation: pulse 1s infinite;
+    }
+
+    header .dot.err {
+      background: var(--err);
+    }
+
+    @keyframes pulse {
+      50% {
+        opacity: 0.4;
+      }
+    }
+
+    header button {
       margin-left: auto;
     }
 
-    .assistant {
-      background: #233;
+    main {
+      flex: 1;
+      display: flex;
+      min-height: 0;
     }
 
-    .thinking {
-      color: #999;
-      font-style: italic;
+    #chat {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      border-right: 1px solid var(--line);
     }
 
-    .tool {
-      background: #2a2;
-      padding: 0.5rem;
-      border-radius: 6px;
-      margin: 0.5rem 0;
-      font-family: monospace;
-      font-size: 0.85rem;
+    #transcript {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
 
-    .toolresult {
-      background: #252;
-      padding: 0.4rem;
+    .bubble {
+      max-width: 88%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      line-height: 1.5;
+    }
+
+    .bubble.user {
+      align-self: flex-end;
+      background: #1f4a7a;
+      border: 1px solid #2c5c92;
+    }
+
+    .bubble.assistant {
+      align-self: flex-start;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+
+    .bubble.assistant p {
+      margin: 0 0 8px;
+    }
+
+    .bubble.assistant p:last-child {
+      margin-bottom: 0;
+    }
+
+    .bubble.assistant code {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      background: var(--panel2);
+      padding: 1px 5px;
       border-radius: 4px;
-      font-family: monospace;
-      font-size: 0.8rem;
+    }
+
+    .bubble.assistant pre {
+      background: var(--panel2);
+      padding: 10px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12.5px;
+    }
+
+    .bubble.error {
+      align-self: flex-start;
+      background: #3d1114;
+      border: 1px solid var(--err);
+      color: #ffb0ae;
+    }
+
+    .thinking-block {
+      align-self: flex-start;
+      max-width: 88%;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .thinking-block summary {
+      cursor: pointer;
+      padding: 7px 12px;
+      color: var(--dim);
+      font-size: 12.5px;
+      font-style: italic;
+      user-select: none;
+    }
+
+    .thinking-block .body {
+      padding: 0 14px 10px;
+      color: var(--dim);
+      font-size: 13px;
+      white-space: pre-wrap;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .toolcard {
+      align-self: flex-start;
+      max-width: 88%;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      font-family: var(--mono);
+      font-size: 12.5px;
+    }
+
+    .toolcard .head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--panel2);
+    }
+
+    .toolcard .head .name {
+      color: var(--acc);
+      font-weight: 600;
+    }
+
+    .toolcard .head .state {
+      margin-left: auto;
+      color: var(--dim);
+    }
+
+    .toolcard .head .state.running {
+      color: var(--warn);
+    }
+
+    .toolcard .head .state.done {
+      color: var(--ok);
+    }
+
+    .toolcard .head .state.failed {
+      color: var(--err);
+    }
+
+    .toolcard details {
+      border-top: 1px solid var(--line);
+    }
+
+    .toolcard summary {
+      cursor: pointer;
+      padding: 6px 12px;
+      color: var(--dim);
+    }
+
+    .toolcard pre {
+      margin: 0;
+      padding: 10px 12px;
+      max-height: 220px;
+      overflow: auto;
       white-space: pre-wrap;
     }
 
-    .error {
-      background: #611;
-      padding: 0.5rem;
-      border-radius: 6px;
-      margin: 0.5rem 0;
+    .toolcard img.result-shot {
+      display: block;
+      max-width: 100%;
+      padding: 8px;
     }
 
-    #inputrow {
+    .shot-inline {
+      max-width: 88%;
+      align-self: flex-start;
+    }
+
+    .shot-inline img {
+      max-width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    #composer {
       display: flex;
-      gap: 0.5rem;
-      padding: 1rem;
-      border-top: 1px solid #333;
+      gap: 10px;
+      padding: 14px 18px;
+      border-top: 1px solid var(--line);
+      background: var(--panel);
     }
 
     #input {
       flex: 1;
-      background: #222;
-      color: #eee;
-      border: 1px solid #444;
-      border-radius: 6px;
-      padding: 0.6rem;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    #input:focus {
+      border-color: var(--acc);
     }
 
     button {
-      background: #345;
-      color: #eee;
-      border: none;
-      border-radius: 6px;
-      padding: 0.6rem 1rem;
+      background: #21262d;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 16px;
       cursor: pointer;
     }
 
-    #eventlog {
-      font-family: monospace;
-      font-size: 0.75rem;
+    button:hover {
+      background: #30363d;
+    }
+
+    button.primary {
+      background: #1f6feb;
+      border-color: #1f6feb;
+      font-weight: 600;
+    }
+
+    button.primary:hover {
+      background: #388bfd;
+    }
+
+    #side {
+      width: 42%;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .tabs .tab {
+      padding: 9px 16px;
+      cursor: pointer;
+      color: var(--dim);
+      border-bottom: 2px solid transparent;
+      user-select: none;
+    }
+
+    .tabs .tab.on {
+      color: var(--text);
+      border-bottom-color: var(--acc);
+    }
+
+    .pane {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: none;
+      min-height: 0;
+    }
+
+    .pane.on {
+      display: block;
+    }
+
+    .pane .muted {
+      color: var(--dim);
+    }
+
+    .evrow {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-bottom: 2px;
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+    }
+
+    .evrow:hover {
+      background: var(--panel2);
+    }
+
+    .evrow .t {
+      color: var(--dim);
+      min-width: 60px;
+    }
+
+    .evrow .ty {
+      min-width: 200px;
+      font-weight: 600;
+    }
+
+    .evrow .ty.run {
+      color: var(--acc);
+    }
+
+    .evrow .ty.tool {
+      color: var(--ok);
+    }
+
+    .evrow .ty.act {
+      color: var(--warn);
+    }
+
+    .evrow .ty.txt {
+      color: var(--text);
+    }
+
+    .evrow .ty.think {
+      color: #a371f7;
+    }
+
+    .evrow .ty.err {
+      color: var(--err);
+    }
+
+    .evrow .d {
+      color: var(--dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #evdetail {
+      border-top: 1px solid var(--line);
+      padding: 10px;
+      font-family: var(--mono);
+      font-size: 11.5px;
       white-space: pre-wrap;
-      color: #888;
+      max-height: 34vh;
+      overflow-y: auto;
+      color: var(--dim);
+      background: var(--panel);
+    }
+
+    #statejson,
+    #statedelta {
+      font-family: var(--mono);
+      font-size: 12px;
+      white-space: pre-wrap;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
       max-height: 30vh;
       overflow-y: auto;
     }
 
-    #browserpanel img {
-      max-width: 100%;
-      border: 1px solid #444;
+    .chip {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 11px;
+      background: var(--panel2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 2px 8px;
+      margin: 2px;
     }
 
-    h3 {
-      margin-top: 0;
+    #shots {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #shots .shot img {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    #shots .shot .cap {
+      color: var(--dim);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding-bottom: 3px;
+    }
+
+    .usage {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: var(--dim);
+      padding: 2px 0;
     }
   </style>
 </head>
 
 <body>
-  <div id="left">
-    <div id="log"></div>
-    <div id="inputrow">
-      <input id="input" placeholder="Type a message…">
-      <button id="send">Send</button>
-      <button id="reset" title="New thread">Reset</button>
+  <header>
+    <div class="dot" id="statusdot"></div>
+    <div class="logo">agent<span>host</span> · ag-ui playground</div>
+    <div class="thread" id="threadid"></div>
+    <button id="newthread">+ new thread</button>
+  </header>
+
+  <main>
+    <div id="chat">
+      <div id="transcript"></div>
+      <div id="composer">
+        <input id="input" placeholder="Message the agent — try: open example.com and take a screenshot">
+        <button class="primary" id="send">Send</button>
+      </div>
     </div>
-  </div>
-  <div id="right">
-    <h3>Thread</h3>
-    <div id="threadid"></div>
-    <h3>Raw events (last 100)</h3>
-    <div id="eventlog"></div>
-    <h3>Browser panel</h3>
-    <div id="browserpanel"></div>
-  </div>
+
+    <div id="side">
+      <div class="tabs">
+        <div class="tab on" data-pane="events">Events <span class="chip" id="evcount">0</span></div>
+        <div class="tab" data-pane="state">State</div>
+        <div class="tab" data-pane="browser">Browser</div>
+      </div>
+      <div class="pane on" id="pane-events">
+        <div id="evlist"></div>
+        <div id="evdetail" class="muted">click an event to inspect</div>
+      </div>
+      <div class="pane" id="pane-state">
+        <div class="muted">STATE_SNAPSHOT / STATE_DELTA (JSON patch) inspector</div>
+        <div id="statedelta" style="margin-top:10px"></div>
+        <div id="statejson" class="muted">no state events yet</div>
+      </div>
+      <div class="pane" id="pane-browser">
+        <div id="shots" class="muted">no browser activity yet — ask the agent to browse</div>
+      </div>
+    </div>
+  </main>
+
   <script type="module">
-    // Self-contained AG-UI consumer: fetch + manual SSE parse over POST /ag-ui.
-    // No external client lib (esm.sh) — the wire shape we speak is our own.
-    const KEY = "agent-host-ag-ui-thread";
+    const KEY = "agenthost.thread";
     let threadId = localStorage.getItem(KEY);
     if (!threadId) {
       threadId = "t-" + Math.random().toString(36).slice(2, 10);
       localStorage.setItem(KEY, threadId);
     }
     document.getElementById("threadid").textContent = threadId;
-
-    const logEl = document.getElementById("log");
-    const eventLog = document.getElementById("eventlog");
-    const seen = [];
-    function addEvent(ev) {
-      seen.push(JSON.stringify(ev));
-      if (seen.length > 100) seen.shift();
-      eventLog.textContent = seen.join("\n");
-    }
-
-    function append(cls, text) {
-      const d = document.createElement("div");
-      d.className = "msg " + cls;
-      d.textContent = text;
-      logEl.appendChild(d);
-      logEl.scrollTop = logEl.scrollHeight;
-      return d;
-    }
-
-    document.getElementById("reset").onclick = () => {
+    document.getElementById("newthread").onclick = () => {
       localStorage.removeItem(KEY);
       location.reload();
     };
 
-    // Wire shape (AG-UI): uppercase event `type` on every data line.
-    // dispatch by that type so nothing depends on a client lib's mapping.
-    const handlers = {
-      RUN_STARTED: () => {window.__curAssistant = append("assistant", "");},
-      TEXT_MESSAGE_START: () => {window.__curAssistant = append("assistant", "");},
-      TEXT_MESSAGE_CONTENT: (ev) => {
-        if (window.__curAssistant) window.__curAssistant.textContent += ev.delta;
+    const dot = document.getElementById("statusdot");
+    const transcript = document.getElementById("transcript");
+    const evlist = document.getElementById("evlist");
+    const evdetail = document.getElementById("evdetail");
+    const evcount = document.getElementById("evcount");
+    const statejson = document.getElementById("statejson");
+    const statedelta = document.getElementById("statedelta");
+    const shotsEl = document.getElementById("shots");
+
+    let curBubble = null, curThink = null, thinkOpen = false;
+    const toolCards = new Map();
+    let lastState = null;
+
+    function scrollBottom() {transcript.scrollTop = transcript.scrollHeight;}
+
+    function bubble(cls) {
+      const d = document.createElement("div");
+      d.className = "bubble " + cls;
+      transcript.appendChild(d);
+      return d;
+    }
+
+    function mdToHtml(text) {
+      if (window.marked) {
+        try {return window.marked.parse(text, {mangle: false, headerIds: false});}
+        catch (e) { /* fall through */}
+      }
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    }
+
+    function toolCard(tcId, name) {
+      const card = document.createElement("div");
+      card.className = "toolcard";
+      card.innerHTML =
+        '<div class="head"><span class="name"></span><span class="state running">running…</span></div>' +
+        '<details><summary>arguments</summary><pre class="args"></pre></details>' +
+        '<details><summary>result</summary><div class="res"></div></details>';
+      card.querySelector(".name").textContent = name;
+      transcript.appendChild(card);
+      scrollBottom();
+      return card;
+    }
+
+    function renderArgs(card, argsText) {
+      const pre = card.querySelector(".args");
+      try {pre.textContent = JSON.stringify(JSON.parse(argsText), null, 2);}
+      catch {pre.textContent = argsText;}
+    }
+
+    function renderResult(card, content, isError, imageSrc) {
+      const st = card.querySelector(".state");
+      st.textContent = isError ? "error" : "done";
+      st.className = "state " + (isError ? "failed" : "done");
+      const res = card.querySelector(".res");
+      if (imageSrc) {
+        const img = document.createElement("img");
+        img.className = "result-shot";
+        img.src = imageSrc;
+        res.replaceChildren(img);
+      } else {
+        const pre = document.createElement("pre");
+        try {pre.textContent = JSON.stringify(JSON.parse(content), null, 2);}
+        catch {pre.textContent = content;}
+        res.replaceChildren(pre);
+      }
+    }
+
+    // ------- event handlers (dispatch by uppercase wire `type`) -------
+    const H = {
+      RUN_STARTED() {
+        dot.className = "dot busy";
+        curBubble = bubble("assistant");
+        curThink = null; thinkOpen = false;
+        addChip("run started");
       },
-      TEXT_MESSAGE_END: () => {window.__curAssistant = null;},
-      REASONING_MESSAGE_CONTENT: (ev) => {
-        // thinking text renders into its own italic block
-        if (!window.__curThinking) window.__curThinking = append("thinking", "");
-        window.__curThinking.textContent += ev.delta;
+      REASONING_MESSAGE_START(ev) {
+        if (curThink && thinkOpen) { /* continue same block */}
+        else {
+          const det = document.createElement("details");
+          det.className = "thinking-block";
+          det.open = true;
+          det.innerHTML = '<summary>thinking…</summary><div class="body"></div>';
+          transcript.appendChild(det);
+          curThink = det.querySelector(".body");
+          thinkOpen = true;
+          addChip("thinking");
+        }
       },
-      REASONING_MESSAGE_END: () => {window.__curThinking = null;},
-      TOOL_CALL_START: (ev) => {
-        const d = document.createElement("div");
-        d.className = "tool";
-        d.id = "tool-" + ev.toolCallId;
-        d.textContent = "tool " + ev.toolCallName + " ";
-        logEl.appendChild(d);
+      REASONING_MESSAGE_CONTENT(ev) {
+        if (curThink) curThink.textContent += ev.delta;
+        scrollBottom();
       },
-      TOOL_CALL_ARGS: (ev) => {
-        const d = document.getElementById("tool-" + ev.toolCallId);
-        if (d) d.textContent += ev.delta;
+      REASONING_MESSAGE_END() {
+        const det = curThink?.closest("details");
+        if (det) det.querySelector("summary").textContent = "thinking";
+        thinkOpen = false;
       },
-      TOOL_CALL_END: () => { },
-      TOOL_CALL_RESULT: (ev) => {
-        const d = document.createElement("div");
-        d.className = "toolresult";
-        d.textContent = ev.content;
-        logEl.appendChild(d);
+      TEXT_MESSAGE_CONTENT(ev) {
+        if (!curBubble) curBubble = bubble("assistant");
+        // re-render markdown progressively (cheap enough at this scale)
+        window.__text = (window.__text || "") + ev.delta;
+        curBubble.innerHTML = mdToHtml(window.__text);
+        scrollBottom();
       },
-      ACTIVITY_SNAPSHOT: (ev) => {
-        // Content carries the screenshot; our server emits
-        // {screenshot: "data:image/png;base64,…", mime}
-        const panelEl = document.getElementById("browserpanel");
-        if (!panelEl) return;
-        const src = (typeof ev.content === "string")
-          ? ev.content
-          : ev.content?.screenshot;
+      TEXT_MESSAGE_END() {
+        window.__text = "";
+        curBubble = null;
+      },
+      TOOL_CALL_START(ev) {
+        toolCards.set(ev.toolCallId, toolCard(ev.toolCallId, ev.toolCallName));
+        addChip("tool: " + ev.toolCallName);
+      },
+      TOOL_CALL_ARGS(ev) {
+        const c = toolCards.get(ev.toolCallId);
+        if (c) {
+          c.dataset.args = (c.dataset.args || "") + ev.delta;
+          renderArgs(c, c.dataset.args);
+        }
+      },
+      TOOL_CALL_END(ev) {
+        const c = toolCards.get(ev.toolCallId);
+        if (c) c.querySelector(".state").textContent = "executing…";
+      },
+      TOOL_CALL_RESULT(ev) {
+        const c = toolCards.get(ev.toolCallId);
+        if (c) {
+          let src = null;
+          try {
+            const r = JSON.parse(ev.content);
+            for (const b of (r.content || [])) {
+              if (b.type === "image" && b.data) {
+                src = "data:" + (b.mimeType || "image/png") + ";base64," + b.data;
+              }
+            }
+          } catch { /* plain text */}
+          renderResult(c, ev.content, ev.role === "tool" && false, src);
+        }
+      },
+      ACTIVITY_SNAPSHOT(ev) {
+        const src = typeof ev.content === "string" ? ev.content : ev.content?.screenshot;
         if (typeof src !== "string" || !src.startsWith("data:image")) return;
+        // gallery entry
+        const item = document.createElement("div");
+        item.className = "shot";
+        const cap = document.createElement("div");
+        cap.className = "cap";
+        cap.textContent = "screenshot · " + new Date().toLocaleTimeString();
         const img = document.createElement("img");
         img.src = src;
-        panelEl.replaceChildren(img);
+        item.append(cap, img);
+        shotsEl.replaceChildren(item, ...shotsEl.querySelectorAll(".shot"));
+        // inline into transcript too
+        const s = document.createElement("div");
+        s.className = "shot-inline";
+        s.innerHTML = '<img src="">';
+        s.querySelector("img").src = src;
+        transcript.appendChild(s);
+        scrollBottom();
+        addChip("screenshot");
       },
-      RUN_FINISHED: () => {
-        window.__curAssistant = null;
-        window.__curThinking = null;
+      STATE_SNAPSHOT(ev) {
+        lastState = ev.snapshot ?? ev.state ?? ev;
+        statejson.classList.remove("muted");
+        statejson.textContent = JSON.stringify(lastState, null, 2);
+        addChip("state snapshot");
       },
-      RUN_ERROR: (ev) => {
-        append("error", "Error: " + (ev.message || "run error"));
+      STATE_DELTA(ev) {
+        statedelta.textContent = JSON.stringify(ev.delta ?? ev.patch, null, 2);
+        addChip("state delta");
+      },
+      RUN_FINISHED(ev) {
+        dot.className = "dot";
+        if (ev.usage?.length) {
+          const u = ev.usage[0];
+          const line = document.createElement("div");
+          line.className = "usage";
+          line.textContent = `tokens: in ${u.input ?? "?"} / out ${u.output ?? "?"}`;
+          transcript.appendChild(line);
+        }
+        addChip("run finished");
+      },
+      RUN_ERROR(ev) {
+        dot.className = "dot err";
+        const b = bubble("error");
+        b.textContent = "⚠ " + (ev.message || "run error");
+        scrollBottom();
+        addChip("RUN_ERROR");
       },
     };
 
-    async function runAgent(userText) {
-      append("user", userText);
-      const body = JSON.stringify({
-        threadId,
-        runId: "gui-" + Date.now(),
-        messages: [{id: "m" + Date.now(), role: "user", content: userText}],
-      });
+    const chips = [];
+    function addChip(label) {
+      chips.push(label);
+      if (chips.length > 30) chips.shift();
+    }
+
+    // ------- SSE over POST -------
+    async function runAgent(text) {
+      dot.className = "dot busy";
+      window.__text = "";
+      const b = bubble("user");
+      b.textContent = text;
+      scrollBottom();
       const resp = await fetch("/ag-ui", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body,
+        body: JSON.stringify({
+          threadId,
+          runId: "gui-" + Date.now(),
+          messages: [{id: "m" + Date.now(), role: "user", content: text}],
+        }),
       });
       if (!resp.ok || !resp.body) {
         const txt = await resp.text().catch(() => "");
-        append("error", "Fetch failed " + resp.status + " " + txt);
+        H.RUN_ERROR({message: `HTTP ${resp.status} ${txt.slice(0, 200)}`});
         return;
       }
       const reader = resp.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
+      let n = 0;
       for (; ;) {
         const {done, value} = await reader.read();
         if (done) break;
         buf += dec.decode(value, {stream: true});
         let idx;
         while ((idx = buf.indexOf("\n")) !== -1) {
-          const line = buf.slice(0, idx);
+          const line = buf.slice(0, idx).trimEnd();
           buf = buf.slice(idx + 1);
           if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6);
           let ev;
-          try {ev = JSON.parse(data);} catch {continue;}
-          addEvent(ev);
-          const h = handlers[ev.type];
-          if (h) h(ev);
+          try {ev = JSON.parse(line.slice(6));} catch {continue;}
+          n++;
+          evcount.textContent = n;
+          // event list row
+          const row = document.createElement("div");
+          row.className = "evrow";
+          const cls = {RUN: "run", TOOL: "tool", ACTIVITY: "act", TEXT: "txt", REASONING: "think"}[ev.type.split("_")[0]] || "txt";
+          row.innerHTML = `<span class="t"></span><span class="ty ${cls}"></span><span class="d"></span>`;
+          row.querySelector(".t").textContent = new Date().toLocaleTimeString();
+          row.querySelector(".ty").textContent = ev.type;
+          row.querySelector(".d").textContent = JSON.stringify(ev).slice(0, 90);
+          row.onclick = () => {evdetail.textContent = JSON.stringify(ev, null, 2);};
+          evlist.prepend(row);
+          (H[ev.type] || (() => { }))(ev);
         }
       }
     }
 
+    const input = document.getElementById("input");
     document.getElementById("send").onclick = () => {
-      const input = document.getElementById("input");
-      const text = input.value.trim();
-      if (!text) return;
+      const t = input.value.trim();
+      if (!t) return;
       input.value = "";
-      runAgent(text).catch(e => append("error", String(e)));
+      runAgent(t).catch(e => H.RUN_ERROR({message: String(e)}));
     };
-    document.getElementById("input").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") document.getElementById("send").click();
+    input.addEventListener("keydown", e => {if (e.key === "Enter") document.getElementById("send").click();});
+
+    // tabs
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.onclick = () => {
+        document.querySelectorAll(".tab").forEach(t => t.classList.remove("on"));
+        document.querySelectorAll(".pane").forEach(p => p.classList.remove("on"));
+        tab.classList.add("on");
+        document.getElementById("pane-" + tab.dataset.pane).classList.add("on");
+      };
     });
+
+    // restore nothing (server keeps thread state); just greet
+    transcript.appendChild(Object.assign(document.createElement("div"), {
+      className: "usage",
+      textContent: "thread " + threadId + " — server holds the session history (omp --session-dir).",
+    }));
   </script>
 </body>
 

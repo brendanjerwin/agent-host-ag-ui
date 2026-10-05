@@ -1,6 +1,54 @@
 {
   "lockfile_version": "1",
   "packages": {
+    "git-lfs@latest": {
+      "last_modified": "2026-08-27T07:16:00Z",
+      "resolved": "github:NixOS/nixpkgs/c27cdad491a991b11ed731760aa2ef8db0cb0410#git-lfs",
+      "source": "devbox-search",
+      "version": "3.7.1",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/rck3867y17mbyriibra4laa2xakn7035-git-lfs-3.7.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/rck3867y17mbyriibra4laa2xakn7035-git-lfs-3.7.1"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/fd3s847albzwvarwz2awhdgmwgkdi3ir-git-lfs-3.7.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/fd3s847albzwvarwz2awhdgmwgkdi3ir-git-lfs-3.7.1"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/sryni1p1m0a50jsmq3k7cj4csqzmqb9h-git-lfs-3.7.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/sryni1p1m0a50jsmq3k7cj4csqzmqb9h-git-lfs-3.7.1"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/jc5ldhs2id0p6xlmmagjzc5ljdx1m7aa-git-lfs-3.7.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/jc5ldhs2id0p6xlmmagjzc5ljdx1m7aa-git-lfs-3.7.1"
+        }
+      }
+    },
     "github:NixOS/nixpkgs/nixpkgs-unstable": {
       "last_modified": "2026-10-02T22:55:44Z",
       "resolved": "github:NixOS/nixpkgs/55ba7f49ef2962b42cbd126522b7df5f95037679?lastModified=1790981744&narHash=sha256-sm6DclXJudZfP%2FpcDBQQsRqyMxBcQsuw%2B7yQr4rBBLE%3D"

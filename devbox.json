@@ -3,7 +3,8 @@
   "packages": [
     "k3d@latest",
     "kubernetes@latest",
-    "openssl@latest"
+    "openssl@latest",
+    "git-lfs@latest"
   ],
   "shell": {
     "init_hook": [

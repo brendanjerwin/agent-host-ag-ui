@@ -94,11 +94,13 @@ func (st *streamState) toAGUI(ev driver.StreamEvent) []agui.Event {
 		var out []agui.Event
 		if st.thinkingOpen == "" {
 			out = append(out, st.closeText()...)
-			out = append(out, agui.NewReasoningMessageStartEvent(v.MessageID, "assistant"))
+			// AG-UI spec: reasoning messages carry role "reasoning" (the
+			// CopilotKit client rejects "assistant" here).
+			out = append(out, agui.NewReasoningMessageStartEvent(v.MessageID, "reasoning"))
 			st.thinkingOpen = v.MessageID
 		} else if st.thinkingOpen != v.MessageID {
 			out = append(out, agui.NewReasoningMessageEndEvent(st.thinkingOpen))
-			out = append(out, agui.NewReasoningMessageStartEvent(v.MessageID, "assistant"))
+			out = append(out, agui.NewReasoningMessageStartEvent(v.MessageID, "reasoning"))
 			st.thinkingOpen = v.MessageID
 		}
 		out = append(out, agui.NewReasoningMessageContentEvent(v.MessageID, v.Text))
