@@ -68,17 +68,30 @@ func main() {
 		}
 	}()
 
-	// A2A face (byo contract).
+	// A2A face. kagent-managed runs (byo actor) go through kagent's own ADK
+	// helper: controller-backed task store, gRPC :80 (contract port),
+	// /readyz :8081 owned by the helper — do not double-bind those here.
+	// Plain runs keep the standalone serving path (own readyz).
 	face := a2a.NewFace(d)
-	if err := a2a.Serve(
-		ctx, face,
-		envOr("AGENT_HOST_AG_UI_A2A_ADDR", ":80"),
-		envOr("AGENT_HOST_AG_UI_A2A_HTTP_ADDR", ":8091"),
-		envOr("AGENT_HOST_AG_UI_READYZ_ADDR", ":8081"),
-		d.Health,
-	); err != nil {
-		slog.Error("a2a server", "err", err)
-		os.Exit(1)
+	if a2a.KagentManaged() {
+		go func() {
+			slog.Info("kagent-managed: ag-ui only", "addr", srv.Cfg.Addr)
+		}()
+		if err := a2a.ServeKagent(ctx, face, "80"); err != nil {
+			slog.Error("a2a server (kagent)", "err", err)
+			os.Exit(1)
+		}
+	} else {
+		if err := a2a.Serve(
+			ctx, face,
+			envOr("AGENT_HOST_AG_UI_A2A_ADDR", ":80"),
+			envOr("AGENT_HOST_AG_UI_A2A_HTTP_ADDR", ":8091"),
+			envOr("AGENT_HOST_AG_UI_READYZ_ADDR", ":8081"),
+			d.Health,
+		); err != nil {
+			slog.Error("a2a server", "err", err)
+			os.Exit(1)
+		}
 	}
 
 	if err := d.Close(); err != nil {
