@@ -1,23 +1,34 @@
 # agent-host-ag-ui + kagent (byo Harness) manifests — api.kagent.dev/v1alpha3.
-# Shapes verified from kagent.dev 1.x docs (agent-harness + api-ref).
-# Day-one: applied with kubectl on the k3d testbed; GitOps-able later.
+# Shapes verified from kagent.dev 1.x docs (agent-harness + api-ref + byo).
+# GitOps: everything here is declared; apply with kubectl (or ArgoCD later).
+# Model provider note: kagent's provider column is a closed enum — these
+# ModelConfigs are NAMED after the real providers (opencode-go / ollama-cloud)
+# and speak OpenAI-compatible endpoints; the UI label reads the enum.
 apiVersion: api.kagent.dev/v1alpha3
 kind: ModelConfig
 metadata:
-  name: agent-host-model
+  name: opencode-go
   namespace: kagent
 spec:
   provider: OpenAI
-  model: deepseek/deepseek-chat-v3.1
-  # NOTE: plan locked opencode-zen (`https://opencode.ai/zen/v1`,
-  # mimo-v2.6-flash); no opencode-zen credential exists on the devbox, so
-  # day-one proof uses OpenRouter (OpenAI-compatible, key already present).
-  # Swap baseUrl+model+secret when the zen key is available — the adapter
-  # does not care; the omp child owns the model call in all cases.
+  model: glm-5.3-flash
   openAI:
-    baseUrl: https://openrouter.ai/api/v1
-  apiKeySecret: kagent-openai
-  apiKeySecretKey: apiKey
+    baseUrl: https://opencode.ai/zen/v1
+  apiKeySecret: omp-key
+  apiKeySecretKey: OPENCODE_API_KEY
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: ModelConfig
+metadata:
+  name: ollama-cloud
+  namespace: kagent
+spec:
+  provider: OpenAI
+  model: glm-5.3-flash
+  openAI:
+    baseUrl: https://api.ollama.com/v1
+  apiKeySecret: omp-key
+  apiKeySecretKey: OLLAMA_CLOUD_API_KEY
 ---
 apiVersion: api.kagent.dev/v1alpha3
 kind: AgentTemplate
@@ -26,6 +37,8 @@ metadata:
   namespace: kagent
 spec:
   description: omp coding-agent dot hosted by agent-host-ag-ui
+  modelConfig:
+    name: ollama-cloud
   systemPrompt: |
     You are the dots persona assistant hosted by agent-host-ag-ui.
     Execute user prompts with an omp coding-agent child. Keep replies direct.
@@ -38,28 +51,22 @@ metadata:
   name: agent-host-ag-ui
   namespace: kagent
 spec:
-  # byo contract: container serves the A2A gRPC service on :80 and /readyz
-  # on :8081. Image MUST be digest-pinned (tags rejected).
   byo: {}
   workload:
-    # CI-published digest for main HEAD (includes role:"reasoning" fix,
-    # ACTIVITY mapping, cancel propagation). CI publishes <sha> + latest.
+    # CI-published digest for main HEAD (role:"reasoning" fix, ACTIVITY
+    # mapping, cancel propagation). CI publishes <sha> + latest per commit.
     image: ghcr.io/brendanjerwin/agent-host-ag-ui@sha256:7a066f5962e3c44939e62e9465e503e73fd1bb8c66be9fce8a6afa35dedd48b0
     command: ["/usr/local/bin/agent-host-ag-ui"]
   env:
     - name: AGENT_HOST_AG_UI_ADDR
       value: ":8090"
+    # BYO CONTRACT: the controller dials gRPC 127.0.0.1:80 unconditionally
+    # (not configurable; KAGENT_PORT is only read by kagent's own ADKs).
+    # The actor runs as root inside the gVisor sandbox, so :80 binds.
     - name: AGENT_HOST_AG_UI_A2A_ADDR
-      # Substrate actors run non-root; gVisor drops file capabilities, so
-      # the privileged :80 bind fails. :8080 is the in-actor A2A gRPC port;
-      # the atenet router resolves it. Local/direct runs stay on :80.
-      value: ":8080"
+      value: ":80"
     - name: AGENT_HOST_AG_UI_A2A_HTTP_ADDR
       value: ":8091"
-    # Controller dials the port named by KAGENT_PORT (default 80). Without
-    # it, a non-80 listener shows READY but every invoke dial fails.
-    - name: KAGENT_PORT
-      value: "8080"
     - name: AGENT_HOST_AG_UI_READYZ_ADDR
       value: ":8081"
     - name: AGENT_HOST_AG_UI_SESSION_ROOT

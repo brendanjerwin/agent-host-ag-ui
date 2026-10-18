@@ -14,6 +14,7 @@ import (
 
 	"github.com/brendanjerwin/agent-host-ag-ui/internal/a2a"
 	ompdriver "github.com/brendanjerwin/agent-host-ag-ui/internal/driver/omp"
+	"github.com/brendanjerwin/agent-host-ag-ui/internal/kagentcfg"
 	"github.com/brendanjerwin/agent-host-ag-ui/internal/server"
 	"github.com/brendanjerwin/agent-host-ag-ui/tools/browser"
 )
@@ -27,6 +28,17 @@ func envOr(key, def string) string {
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+
+	// kagent byo contract: materialize the compiled agent config (model,
+	// system prompt, credentials as egress-gateway placeholders) into the omp
+	// child's agent dir. No-op outside kagent-managed runs.
+	agentDir := filepath.Join(envOr("HOME", "/root"), ".omp", "agent")
+	if err := kagentcfg.Materialize(agentDir); err != nil {
+		slog.Error("kagent config materialize", "err", err)
+		os.Exit(1)
+	} else if cfg, ok, _ := kagentcfg.Parse(); ok && cfg != nil {
+		slog.Info("kagent config materialized", "model", cfg.Model.Model, "baseUrl", cfg.Model.BaseURL)
+	}
 
 	sessionRoot := envOr("AGENT_HOST_AG_UI_SESSION_ROOT", filepath.Join(os.Getenv("HOME"), ".agent-host-ag-ui", "sessions"))
 	browser := browser.New()
