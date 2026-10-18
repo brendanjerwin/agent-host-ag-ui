@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: host
-          image: ghcr.io/brendanjerwin/agent-host-ag-ui:dev3
+          image: ghcr.io/brendanjerwin/agent-host-ag-ui@sha256:7a066f5962e3c44939e62e9465e503e73fd1bb8c66be9fce8a6afa35dedd48b0
           imagePullPolicy: IfNotPresent
           env:
             - name: HOME
@@ -44,11 +44,6 @@ spec:
                 secretKeyRef:
                   name: omp-key
                   key: OLLAMA_CLOUD_API_KEY
-            - name: OPENROUTER_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: omp-key
-                  key: OPENROUTER_API_KEY
           volumeMounts:
             - name: omp-config
               mountPath: /root/.omp-source
