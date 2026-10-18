@@ -42,9 +42,9 @@ spec:
   # on :8081. Image MUST be digest-pinned (tags rejected).
   byo: {}
   workload:
-    # CI-published digest (commit a84c3a9, tags <sha> + latest); the golden
-    # actor's atelet pulls via the registry — node-local imports don't count.
-    image: ghcr.io/brendanjerwin/agent-host-ag-ui@sha256:ad3d5a47e745f03160cbbb579c9c06b4c2e4dd4256bd4daa336aab9094a53221
+    # CI-published digest for main HEAD (includes role:"reasoning" fix,
+    # ACTIVITY mapping, cancel propagation). CI publishes <sha> + latest.
+    image: ghcr.io/brendanjerwin/agent-host-ag-ui@sha256:7a066f5962e3c44939e62e9465e503e73fd1bb8c66be9fce8a6afa35dedd48b0
     command: ["/usr/local/bin/agent-host-ag-ui"]
   env:
     - name: AGENT_HOST_AG_UI_ADDR

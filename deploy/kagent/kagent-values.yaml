@@ -13,7 +13,9 @@ controller:
     atenetRouterURL: http://atenet-router.ate-system.svc:80
 substrateWorkerPool:
   create: true
-  replicas: 1
+  # Two workers: one to host the agent, one spare for the golden-actor warmup
+  # (substrate's own demo default; 1 replica wedges the golden snapshot flow).
+  replicas: 2
   workerImage: "ghcr.io/kagent-dev/substrate/ateom-gvisor:v0.3.0-alpha3"
 grafana-mcp:
   enabled: false
