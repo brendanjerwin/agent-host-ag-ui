@@ -2,6 +2,14 @@
 
 ## Active
 
+7. **Remote-sandbox option evaluated: boat.dev** — API-first Linux VMs for agents
+   (SSH, Docker, `POST /prompt` for pre-wired providers incl. `opencode`,
+   events, host-a-port, 60fps desktop, per-second billing, free trial 25h).
+   Candidate for phase-3 "burst compute" behind agent-host: the adapter would
+   treat one sandbox as an ephemeral byo actor (boot omp there, stream events
+   back). NOT wired yet — needs a boat API key + a decision whether harness /
+   kagent ModelConfig drives the model or boat's own proxy.
+
 0. **Substrate actor (byo Harness) blocked, deferred; rung-3 is the live surface**:
    after the agent node's kubelet wedged (sandbox creation broke: PodReadyToStartContainers
    False on agent-node pods, atelet stuck ContainerCreating >1h across a 4x node restart),
