@@ -17,6 +17,15 @@ substrateWorkerPool:
   # (substrate's own demo default; 1 replica wedges the golden snapshot flow).
   replicas: 2
   workerImage: "ghcr.io/kagent-dev/substrate/ateom-gvisor:v0.3.0-alpha3"
+ui:
+  # Patched read-only UI (GitOps-only: no create buttons, no Prompts nav).
+  # Source patches live in the brendanjerwin kagent fork (ui/ tree); the image
+  # is ctr-imported into both k3d nodes (deploy/bringup.sh step 4) because the
+  # devbox gh token lacks write:packages for a GHCR push.
+  image:
+    repository: brendanjerwin/kagent-ui
+    tag: gitops-1
+    pullPolicy: IfNotPresent
 grafana-mcp:
   enabled: false
 observability-agent:
